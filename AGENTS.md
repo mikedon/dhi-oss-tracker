@@ -150,7 +150,8 @@
 | Date | Decision | Rationale |
 |------|----------|----------|
 | 2026-01-05 | Use 6s delay between code search pages, 1s between repo fetches | GitHub code search limit is ~10/min; repo API is 5000/hr. Conservative delays avoid rate limits. |
-| 2026-01-05 | Cap at 1000 results (10 pages) | GitHub code search API hard limit. Sufficient for current DHI adoption scale (~66 repos). |
+| 2026-01-05 | Cap at 1000 results (10 pages) per query | GitHub code search API hard limit. |
+| 2026-01-05 | Search multiple file types: Dockerfile, YAML, GitHub Actions | Expands coverage from 66 to 124 projects. Catches k8s manifests, docker-compose, CI configs. |
 
 ---
 

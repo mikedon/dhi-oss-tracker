@@ -64,6 +64,7 @@ type Project struct {
 	Description     string
 	PrimaryLanguage string
 	DockerfilePath  string
+	FileURL         string
 }
 
 func (c *Client) doRequest(ctx context.Context, method, endpoint string) ([]byte, error) {
@@ -99,65 +100,100 @@ func (c *Client) doRequest(ctx context.Context, method, endpoint string) ([]byte
 	return body, nil
 }
 
-// SearchDHIDockerfiles searches for Dockerfiles containing dhi.io
-// Returns unique repos found with their dockerfile paths
-func (c *Client) SearchDHIDockerfiles(ctx context.Context, progressFn func(found int, page int)) (map[string]string, error) {
-	repos := make(map[string]string) // repo full name -> dockerfile path
-	page := 1
-	perPage := 100
+// SearchQuery represents a single search query configuration
+type SearchQuery struct {
+	Name  string
+	Query string
+}
 
-	for {
-		select {
-		case <-ctx.Done():
-			return repos, ctx.Err()
-		default:
-		}
+// GetSearchQueries returns all the search queries we use to find DHI usage
+func GetSearchQueries() []SearchQuery {
+	return []SearchQuery{
+		{"Dockerfiles", `"dhi.io" language:Dockerfile`},
+		{"YAML files", `"dhi.io" language:YAML`},
+		{"GitHub Actions", `"dhi.io" path:.github/workflows`},
+	}
+}
 
-		query := url.QueryEscape(`"dhi.io" language:Dockerfile`)
-		endpoint := fmt.Sprintf("/search/code?q=%s&per_page=%d&page=%d", query, perPage, page)
+// SearchResult holds a repo and the file path where dhi.io was found
+type SearchResult struct {
+	RepoFullName string
+	FilePath     string
+	FileURL      string
+}
 
-		log.Printf("Searching page %d...", page)
-		body, err := c.doRequest(ctx, "GET", endpoint)
-		if err != nil {
-			// If rate limited, wait and retry
-			if strings.Contains(err.Error(), "rate limited") {
-				log.Printf("Rate limited, waiting 60s...")
-				time.Sleep(60 * time.Second)
-				continue
+// SearchDHIUsage searches for dhi.io references across multiple file types
+// Returns unique repos found with their file paths
+func (c *Client) SearchDHIUsage(ctx context.Context, progressFn func(queryName string, found int, page int)) (map[string]SearchResult, error) {
+	repos := make(map[string]SearchResult) // repo full name -> search result
+	queries := GetSearchQueries()
+
+	for _, sq := range queries {
+		log.Printf("Starting search: %s", sq.Name)
+		page := 1
+		perPage := 100
+
+		for {
+			select {
+			case <-ctx.Done():
+				return repos, ctx.Err()
+			default:
 			}
-			return repos, err
-		}
 
-		var searchResp CodeSearchResponse
-		if err := json.Unmarshal(body, &searchResp); err != nil {
-			return repos, err
-		}
+			query := url.QueryEscape(sq.Query)
+			endpoint := fmt.Sprintf("/search/code?q=%s&per_page=%d&page=%d", query, perPage, page)
 
-		for _, item := range searchResp.Items {
-			if _, exists := repos[item.Repository.FullName]; !exists {
-				repos[item.Repository.FullName] = item.Path
+			log.Printf("[%s] Searching page %d...", sq.Name, page)
+			body, err := c.doRequest(ctx, "GET", endpoint)
+			if err != nil {
+				// If rate limited, wait and retry
+				if strings.Contains(err.Error(), "rate limited") {
+					log.Printf("Rate limited, waiting 60s...")
+					time.Sleep(60 * time.Second)
+					continue
+				}
+				return repos, err
 			}
+
+			var searchResp CodeSearchResponse
+			if err := json.Unmarshal(body, &searchResp); err != nil {
+				return repos, err
+			}
+
+			for _, item := range searchResp.Items {
+				if _, exists := repos[item.Repository.FullName]; !exists {
+					fileURL := fmt.Sprintf("https://github.com/%s/blob/HEAD/%s", item.Repository.FullName, item.Path)
+					repos[item.Repository.FullName] = SearchResult{
+						RepoFullName: item.Repository.FullName,
+						FilePath:     item.Path,
+						FileURL:      fileURL,
+					}
+				}
+			}
+
+			if progressFn != nil {
+				progressFn(sq.Name, len(repos), page)
+			}
+
+			log.Printf("[%s] Page %d: found %d items, total unique repos: %d", sq.Name, page, len(searchResp.Items), len(repos))
+
+			// Check if we've got all results
+			if len(searchResp.Items) < perPage || page*perPage >= searchResp.TotalCount {
+				break
+			}
+
+			// GitHub only returns first 1000 results per query
+			if page >= 10 {
+				log.Printf("[%s] Reached GitHub's 1000 result limit", sq.Name)
+				break
+			}
+
+			page++
+			// Rate limit delay for code search
+			time.Sleep(searchRateDelay)
 		}
 
-		if progressFn != nil {
-			progressFn(len(repos), page)
-		}
-
-		log.Printf("Page %d: found %d items, total unique repos: %d", page, len(searchResp.Items), len(repos))
-
-		// Check if we've got all results
-		if len(searchResp.Items) < perPage || page*perPage >= searchResp.TotalCount {
-			break
-		}
-
-		// GitHub only returns first 1000 results
-		if page >= 10 {
-			log.Printf("Reached GitHub's 1000 result limit")
-			break
-		}
-
-		page++
-		// Rate limit delay for code search
+		// Delay between different search queries
 		time.Sleep(searchRateDelay)
 	}
 
@@ -182,14 +218,14 @@ func (c *Client) GetRepoDetails(ctx context.Context, repoFullName string) (*Repo
 
 // FetchAllProjects searches for DHI usage and fetches details for each repo
 func (c *Client) FetchAllProjects(ctx context.Context, progressFn func(status string, current, total int)) ([]Project, error) {
-	// Step 1: Search for all repos
+	// Step 1: Search for all repos across multiple file types
 	if progressFn != nil {
 		progressFn("searching", 0, 0)
 	}
 
-	repos, err := c.SearchDHIDockerfiles(ctx, nil)
+	repos, err := c.SearchDHIUsage(ctx, nil)
 	if err != nil {
-		return nil, fmt.Errorf("searching dockerfiles: %w", err)
+		return nil, fmt.Errorf("searching for dhi.io usage: %w", err)
 	}
 
 	log.Printf("Found %d unique repositories", len(repos))
@@ -197,7 +233,7 @@ func (c *Client) FetchAllProjects(ctx context.Context, progressFn func(status st
 	// Step 2: Fetch details for each repo
 	projects := make([]Project, 0, len(repos))
 	i := 0
-	for repoName, dockerfilePath := range repos {
+	for repoName, searchResult := range repos {
 		select {
 		case <-ctx.Done():
 			return projects, ctx.Err()
@@ -236,7 +272,8 @@ func (c *Client) FetchAllProjects(ctx context.Context, progressFn func(status st
 			Stars:           details.StargazersCount,
 			Description:     details.Description,
 			PrimaryLanguage: details.Language,
-			DockerfilePath:  dockerfilePath,
+			DockerfilePath:  searchResult.FilePath,
+			FileURL:         searchResult.FileURL,
 		})
 
 		// Small delay to avoid hitting rate limits on repo API

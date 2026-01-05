@@ -181,6 +181,7 @@ func (a *API) runRefresh(jobID int64) {
 			Description:     p.Description,
 			PrimaryLanguage: p.PrimaryLanguage,
 			DockerfilePath:  p.DockerfilePath,
+			FileURL:         p.FileURL,
 		}
 		if err := a.db.UpsertProject(dbProject); err != nil {
 			log.Printf("Error upserting project %s: %v", p.RepoFullName, err)
