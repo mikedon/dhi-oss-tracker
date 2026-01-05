@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DHI OSS Usage Tracker</title>
+    <style>
+        :root {
+            --primary: #0066cc;
+            --primary-dark: #004499;
+            --success: #28a745;
+            --warning: #ffc107;
+            --bg: #f5f5f5;
+            --card-bg: #ffffff;
+            --text: #333333;
+            --text-muted: #666666;
+            --border: #dddddd;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            background: var(--primary);
+            color: white;
+            padding: 20px 0;
+            margin-bottom: 30px;
+        }
+
+        header .container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        header h1 {
+            font-size: 1.5rem;
+        }
+
+        header p {
+            opacity: 0.9;
+            font-size: 0.9rem;
+        }
+
+        .refresh-section {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background 0.2s;
+        }
+
+        .btn-primary {
+            background: white;
+            color: var(--primary);
+        }
+
+        .btn-primary:hover {
+            background: #f0f0f0;
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .refresh-status {
+            font-size: 0.85rem;
+            opacity: 0.9;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        .stat-card .number {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: var(--primary);
+        }
+
+        .stat-card .label {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .section {
+            margin-bottom: 30px;
+        }
+
+        .section h2 {
+            margin-bottom: 15px;
+            font-size: 1.3rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .badge {
+            background: var(--primary);
+            color: white;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: normal;
+        }
+
+        .badge.gold {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .badge.silver {
+            background: #6c757d;
+        }
+
+        .project-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .project-card {
+            background: var(--card-bg);
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: box-shadow 0.2s;
+        }
+
+        .project-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        .project-card.popular {
+            border-left: 4px solid #ffc107;
+        }
+
+        .project-card.notable {
+            border-left: 4px solid var(--primary);
+        }
+
+        .project-card h3 {
+            font-size: 1.1rem;
+            margin-bottom: 5px;
+        }
+
+        .project-card h3 a {
+            color: var(--primary);
+            text-decoration: none;
+        }
+
+        .project-card h3 a:hover {
+            text-decoration: underline;
+        }
+
+        .project-card .stars {
+            color: var(--warning);
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .project-card .description {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .project-card .meta {
+            margin-top: 10px;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .controls {
+            background: var(--card-bg);
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .controls input, .controls select {
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            font-size: 0.9rem;
+        }
+
+        .controls input[type="search"] {
+            width: 250px;
+        }
+
+        .controls label {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--card-bg);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+        }
+
+        th {
+            background: var(--primary);
+            color: white;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        th:hover {
+            background: var(--primary-dark);
+        }
+
+        tr:nth-child(even) {
+            background: #f9f9f9;
+        }
+
+        tr:hover {
+            background: #f0f0f0;
+        }
+
+        td a {
+            color: var(--primary);
+            text-decoration: none;
+        }
+
+        td a:hover {
+            text-decoration: underline;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-muted);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-muted);
+        }
+
+        @media (max-width: 768px) {
+            header .container {
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
+            }
+
+            .controls {
+                flex-direction: column;
+            }
+
+            .controls input[type="search"] {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <div>
+                <h1>🐳 DHI OSS Usage Tracker</h1>
+                <p>Tracking Docker Hardened Images adoption in open source</p>
+            </div>
+            <div class="refresh-section">
+                <span class="refresh-status" id="refreshStatus">Loading...</span>
+                <button class="btn btn-primary" id="refreshBtn" onclick="triggerRefresh()">
+                    🔄 Refresh Data
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- Stats -->
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card">
+                <div class="number" id="totalProjects">-</div>
+                <div class="label">Total Projects</div>
+            </div>
+            <div class="stat-card">
+                <div class="number" id="totalStars">-</div>
+                <div class="label">Combined Stars</div>
+            </div>
+            <div class="stat-card">
+                <div class="number" id="popularCount">-</div>
+                <div class="label">Popular (1K+ ⭐)</div>
+            </div>
+            <div class="stat-card">
+                <div class="number" id="notableCount">-</div>
+                <div class="label">Notable (100+ ⭐)</div>
+            </div>
+        </div>
+
+        <!-- Popular Projects -->
+        <section class="section" id="popularSection">
+            <h2>🏆 Popular Projects <span class="badge gold">1000+ stars</span></h2>
+            <div class="project-cards" id="popularProjects"></div>
+        </section>
+
+        <!-- Notable Projects -->
+        <section class="section" id="notableSection">
+            <h2>⭐ Notable Projects <span class="badge silver">100-999 stars</span></h2>
+            <div class="project-cards" id="notableProjects"></div>
+        </section>
+
+        <!-- All Projects -->
+        <section class="section">
+            <h2>📊 All Projects</h2>
+            
+            <div class="controls">
+                <input type="search" id="searchInput" placeholder="Search projects..." oninput="debounceSearch()">
+                
+                <label>
+                    Filter:
+                    <select id="filterStars" onchange="loadAllProjects()">
+                        <option value="">All stars</option>
+                        <option value="1000">1000+ stars</option>
+                        <option value="100">100+ stars</option>
+                        <option value="10">10+ stars</option>
+                    </select>
+                </label>
+                
+                <label>
+                    Sort by:
+                    <select id="sortBy" onchange="loadAllProjects()">
+                        <option value="stars">Stars</option>
+                        <option value="name">Name</option>
+                        <option value="first_seen">Date Added</option>
+                    </select>
+                </label>
+                
+                <label>
+                    Order:
+                    <select id="sortOrder" onchange="loadAllProjects()">
+                        <option value="desc">Descending</option>
+                        <option value="asc">Ascending</option>
+                    </select>
+                </label>
+            </div>
+
+            <table id="projectsTable">
+                <thead>
+                    <tr>
+                        <th onclick="sortTable('name')">Repository</th>
+                        <th onclick="sortTable('stars')">Stars</th>
+                        <th>Description</th>
+                        <th>Language</th>
+                    </tr>
+                </thead>
+                <tbody id="projectsBody">
+                    <tr><td colspan="4" class="loading">Loading...</td></tr>
+                </tbody>
+            </table>
+        </section>
+    </main>
+
+    <script>
+        let searchTimeout;
+
+        // Format number with K/M suffix
+        function formatNumber(num) {
+            if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+            if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+            return num.toString();
+        }
+
+        // Load stats
+        async function loadStats() {
+            try {
+                const resp = await fetch('/api/stats');
+                const data = await resp.json();
+                document.getElementById('totalProjects').textContent = data.total_projects;
+                document.getElementById('totalStars').textContent = formatNumber(data.total_stars);
+                document.getElementById('popularCount').textContent = data.popular_count;
+                document.getElementById('notableCount').textContent = data.notable_count;
+            } catch (err) {
+                console.error('Failed to load stats:', err);
+            }
+        }
+
+        // Load popular projects (1000+ stars)
+        async function loadPopularProjects() {
+            try {
+                const resp = await fetch('/api/projects?min_stars=1000&sort=stars&order=desc');
+                const projects = await resp.json();
+                const container = document.getElementById('popularProjects');
+                
+                if (!projects || projects.length === 0) {
+                    document.getElementById('popularSection').style.display = 'none';
+                    return;
+                }
+                
+                document.getElementById('popularSection').style.display = 'block';
+                container.innerHTML = projects.map(p => `
+                    <div class="project-card popular">
+                        <h3><a href="${p.github_url}" target="_blank">${p.repo_full_name}</a></h3>
+                        <div class="stars">⭐ ${formatNumber(p.stars)}</div>
+                        <div class="description">${p.description || 'No description'}</div>
+                        <div class="meta">${p.primary_language || 'Unknown'} • ${p.dockerfile_path}</div>
+                    </div>
+                `).join('');
+            } catch (err) {
+                console.error('Failed to load popular projects:', err);
+            }
+        }
+
+        // Load notable projects (100-999 stars)
+        async function loadNotableProjects() {
+            try {
+                const resp = await fetch('/api/projects?min_stars=100&max_stars=999&sort=stars&order=desc');
+                const projects = await resp.json();
+                const container = document.getElementById('notableProjects');
+                
+                if (!projects || projects.length === 0) {
+                    document.getElementById('notableSection').style.display = 'none';
+                    return;
+                }
+                
+                document.getElementById('notableSection').style.display = 'block';
+                container.innerHTML = projects.map(p => `
+                    <div class="project-card notable">
+                        <h3><a href="${p.github_url}" target="_blank">${p.repo_full_name}</a></h3>
+                        <div class="stars">⭐ ${formatNumber(p.stars)}</div>
+                        <div class="description">${p.description || 'No description'}</div>
+                        <div class="meta">${p.primary_language || 'Unknown'} • ${p.dockerfile_path}</div>
+                    </div>
+                `).join('');
+            } catch (err) {
+                console.error('Failed to load notable projects:', err);
+            }
+        }
+
+        // Load all projects with filters
+        async function loadAllProjects() {
+            try {
+                const search = document.getElementById('searchInput').value;
+                const minStars = document.getElementById('filterStars').value;
+                const sortBy = document.getElementById('sortBy').value;
+                const order = document.getElementById('sortOrder').value;
+
+                let url = `/api/projects?sort=${sortBy}&order=${order}`;
+                if (search) url += `&search=${encodeURIComponent(search)}`;
+                if (minStars) url += `&min_stars=${minStars}`;
+
+                const resp = await fetch(url);
+                const projects = await resp.json();
+                const tbody = document.getElementById('projectsBody');
+
+                if (!projects || projects.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No projects found</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = projects.map(p => `
+                    <tr>
+                        <td><a href="${p.github_url}" target="_blank">${p.repo_full_name}</a></td>
+                        <td>⭐ ${formatNumber(p.stars)}</td>
+                        <td>${truncate(p.description || '', 80)}</td>
+                        <td>${p.primary_language || '-'}</td>
+                    </tr>
+                `).join('');
+            } catch (err) {
+                console.error('Failed to load projects:', err);
+            }
+        }
+
+        function truncate(str, len) {
+            return str.length > len ? str.substring(0, len) + '...' : str;
+        }
+
+        function debounceSearch() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(loadAllProjects, 300);
+        }
+
+        function sortTable(column) {
+            const sortBy = document.getElementById('sortBy');
+            const sortOrder = document.getElementById('sortOrder');
+            
+            if (sortBy.value === column) {
+                sortOrder.value = sortOrder.value === 'desc' ? 'asc' : 'desc';
+            } else {
+                sortBy.value = column;
+                sortOrder.value = 'desc';
+            }
+            loadAllProjects();
+        }
+
+        // Refresh status
+        async function loadRefreshStatus() {
+            try {
+                const resp = await fetch('/api/refresh/status');
+                const data = await resp.json();
+                const statusEl = document.getElementById('refreshStatus');
+                const btn = document.getElementById('refreshBtn');
+
+                if (data.is_running) {
+                    statusEl.textContent = '🔄 Refreshing...';
+                    btn.disabled = true;
+                } else if (data.last_job) {
+                    const date = new Date(data.last_job.completed_at || data.last_job.created_at);
+                    statusEl.textContent = `Last updated: ${date.toLocaleString()}`;
+                    btn.disabled = false;
+                } else {
+                    statusEl.textContent = 'No data yet';
+                    btn.disabled = false;
+                }
+            } catch (err) {
+                console.error('Failed to load refresh status:', err);
+            }
+        }
+
+        async function triggerRefresh() {
+            const btn = document.getElementById('refreshBtn');
+            btn.disabled = true;
+            document.getElementById('refreshStatus').textContent = '🔄 Starting refresh...';
+
+            try {
+                const resp = await fetch('/api/refresh', { method: 'POST' });
+                const data = await resp.json();
+                
+                if (data.success) {
+                    // Poll for completion
+                    pollRefreshStatus();
+                } else {
+                    document.getElementById('refreshStatus').textContent = data.message;
+                    btn.disabled = false;
+                }
+            } catch (err) {
+                console.error('Failed to trigger refresh:', err);
+                btn.disabled = false;
+            }
+        }
+
+        function pollRefreshStatus() {
+            const interval = setInterval(async () => {
+                const resp = await fetch('/api/refresh/status');
+                const data = await resp.json();
+
+                if (!data.is_running) {
+                    clearInterval(interval);
+                    loadRefreshStatus();
+                    loadStats();
+                    loadPopularProjects();
+                    loadNotableProjects();
+                    loadAllProjects();
+                } else {
+                    document.getElementById('refreshStatus').textContent = '🔄 Refreshing...';
+                }
+            }, 3000);
+        }
+
+        // Initial load
+        loadStats();
+        loadPopularProjects();
+        loadNotableProjects();
+        loadAllProjects();
+        loadRefreshStatus();
+    </script>
+</body>
+</html>

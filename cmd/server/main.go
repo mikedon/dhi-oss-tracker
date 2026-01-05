@@ -56,6 +56,13 @@ func main() {
 	// Register API routes
 	apiHandler.RegisterRoutes(mux)
 
+	// Serve static files
+	staticDir := os.Getenv("STATIC_DIR")
+	if staticDir == "" {
+		staticDir = "static"
+	}
+	mux.Handle("/", http.FileServer(http.Dir(staticDir)))
+
 	log.Printf("Server starting on port %s", port)
 	if err := http.ListenAndServe(":"+port, mux); err != nil {
 		log.Fatalf("Server failed: %v", err)
