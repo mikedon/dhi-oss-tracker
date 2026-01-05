@@ -111,8 +111,9 @@ type SearchQuery struct {
 // These are tuned to find actual DHI registry usage, not false positives like "siddhi.io"
 func GetSearchQueries() []SearchQuery {
 	return []SearchQuery{
-		// FROM dhi.io - Dockerfile base image references (most reliable)
-		{"Dockerfiles", `"FROM dhi.io"`},
+		// FROM dhi.io in actual Dockerfiles (not docs/READMEs)
+		// filename:Dockerfile is a substring match, so catches Dockerfile.dev, app.Dockerfile, etc.
+		{"Dockerfiles", `"FROM dhi.io" filename:Dockerfile`},
 		// image: dhi.io/ - K8s/docker-compose image references with trailing slash
 		// The "image: " prefix distinguishes from URLs like siddhi.io
 		{"YAML/K8s", `"image: dhi.io/" language:YAML`},
