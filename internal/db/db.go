@@ -268,3 +268,16 @@ func (db *DB) GetRunningRefreshJob() (*RefreshJob, error) {
 	}
 	return &job, nil
 }
+
+func (db *DB) GetLastCompletedRefreshJob() (*RefreshJob, error) {
+	row := db.QueryRow(`SELECT id, status, started_at, completed_at, projects_found, error_message, created_at FROM refresh_jobs WHERE status = 'completed' ORDER BY completed_at DESC LIMIT 1`)
+	var job RefreshJob
+	err := row.Scan(&job.ID, &job.Status, &job.StartedAt, &job.CompletedAt, &job.ProjectsFound, &job.ErrorMessage, &job.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &job, nil
+}

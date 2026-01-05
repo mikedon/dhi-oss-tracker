@@ -158,7 +158,7 @@ func (a *API) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Start async refresh
-	go a.runRefresh(jobID)
+	go a.runRefresh(jobID, "manual")
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -168,14 +168,14 @@ func (a *API) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (a *API) runRefresh(jobID int64) {
+func (a *API) runRefresh(jobID int64, source string) {
 	defer func() {
 		a.refreshMu.Lock()
 		a.refreshRunning = false
 		a.refreshMu.Unlock()
 	}()
 
-	log.Printf("Starting refresh job %d", jobID)
+	log.Printf("Starting refresh job %d (source: %s)", jobID, source)
 
 	if err := a.db.StartRefreshJob(jobID); err != nil {
 		log.Printf("Error starting job: %v", err)
@@ -213,7 +213,43 @@ func (a *API) runRefresh(jobID int64) {
 		log.Printf("Error completing job: %v", err)
 	}
 
-	log.Printf("Refresh job %d completed: %d projects", jobID, len(projects))
+	log.Printf("Refresh job %d completed (source: %s): %d projects", jobID, source, len(projects))
+}
+
+// TriggerRefresh starts a refresh if one isn't already running.
+// Returns true if a refresh was started, false if one was already running.
+// This is used by the scheduler for automated refreshes.
+func (a *API) TriggerRefresh(source string) bool {
+	a.refreshMu.Lock()
+	if a.refreshRunning {
+		a.refreshMu.Unlock()
+		log.Printf("Skipping %s refresh: already running", source)
+		return false
+	}
+	a.refreshRunning = true
+	a.refreshMu.Unlock()
+
+	jobID, err := a.db.CreateRefreshJob()
+	if err != nil {
+		log.Printf("Error creating refresh job for %s refresh: %v", source, err)
+		a.refreshMu.Lock()
+		a.refreshRunning = false
+		a.refreshMu.Unlock()
+		return false
+	}
+
+	go a.runRefresh(jobID, source)
+	return true
+}
+
+// GetLastRefreshTime returns the completion time of the last successful refresh.
+// Returns nil if no successful refresh has occurred.
+func (a *API) GetLastRefreshTime() *time.Time {
+	job, err := a.db.GetLastCompletedRefreshJob()
+	if err != nil || job == nil {
+		return nil
+	}
+	return job.CompletedAt
 }
 
 // handleRefreshStatus returns the current refresh status

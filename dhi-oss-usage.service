@@ -7,6 +7,9 @@ Type=simple
 User=exedev
 WorkingDirectory=/home/exedev/dhi-oss-usage
 EnvironmentFile=/home/exedev/dhi-oss-usage/.env
+# REFRESH_SCHEDULE uses cron syntax. Default: "0 3 * * *" (3 AM daily)
+# Set to "disabled" to turn off scheduled refresh
+Environment="REFRESH_SCHEDULE=0 3 * * *"
 ExecStart=/home/exedev/dhi-oss-usage/server
 Restart=always
 RestartSec=5
