@@ -2,18 +2,23 @@
 
 ## Current State
 
-**Status:** Phase 1 complete - skeleton & database working
+**Status:** ✅ All phases complete - production ready
 
 **Architecture:** 
 - Go backend + SQLite + vanilla HTML/JS frontend
-- Will run on port 8000
+- Running on port 8000 via systemd
 - GitHub PAT stored in `.env` (not committed)
+- Public URL: https://dhi-oss-usage.exe.xyz:8000/
 
 **Key Files:**
 - `spec.md` - Full specification
 - `.env` - GitHub token (gitignored)
 - `cmd/server/main.go` - Main server entry point
 - `internal/db/db.go` - Database layer with SQLite
+- `internal/github/client.go` - GitHub API client
+- `internal/api/api.go` - REST API handlers
+- `static/index.html` - Frontend UI
+- `dhi-oss-usage.service` - Systemd service file
 - `dhi-oss-usage.db` - SQLite database (gitignored)
 
 ---
@@ -113,7 +118,7 @@
 
 **Verify:** Popular/notable sections display correctly, filter works, looks good on mobile.
 
-**Status:** ⬜ Not started
+**Status:** ✅ Complete (merged into Phase 4)
 
 ---
 
@@ -128,7 +133,7 @@
 
 **Verify:** Service runs after restart, accessible at public URL.
 
-**Status:** ⬜ Not started
+**Status:** ✅ Complete
 
 ---
 

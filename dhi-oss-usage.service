@@ -1,0 +1,15 @@
+[Unit]
+Description=DHI OSS Usage Tracker
+After=network.target
+
+[Service]
+Type=simple
+User=exedev
+WorkingDirectory=/home/exedev/dhi-oss-usage
+EnvironmentFile=/home/exedev/dhi-oss-usage/.env
+ExecStart=/home/exedev/dhi-oss-usage/server
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
