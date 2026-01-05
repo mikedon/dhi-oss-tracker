@@ -2,7 +2,7 @@
 
 ## Current State
 
-**Status:** Spec complete, ready to begin Phase 1
+**Status:** Phase 1 complete - skeleton & database working
 
 **Architecture:** 
 - Go backend + SQLite + vanilla HTML/JS frontend
@@ -12,7 +12,9 @@
 **Key Files:**
 - `spec.md` - Full specification
 - `.env` - GitHub token (gitignored)
-- `.gitignore` - Excludes .env
+- `cmd/server/main.go` - Main server entry point
+- `internal/db/db.go` - Database layer with SQLite
+- `dhi-oss-usage.db` - SQLite database (gitignored)
 
 ---
 
@@ -48,7 +50,7 @@
 
 **Verify:** Server starts, health endpoint returns 200, database file created.
 
-**Status:** ⬜ Not started
+**Status:** ✅ Complete
 
 ---
 
@@ -135,6 +137,14 @@
 - Trend visualization (charts)
 - "New this week" indicators
 - Automated scheduled refreshes
+
+---
+
+## Decision Log
+
+| Date | Decision | Rationale |
+|------|----------|----------|
+| *(entries will be added as we build)* | | |
 
 ---
 
