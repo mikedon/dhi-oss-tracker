@@ -66,7 +66,7 @@
 
 **Verify:** Can trigger search, results stored in DB, rate limits respected.
 
-**Status:** ⬜ Not started
+**Status:** ✅ Complete
 
 ---
 
@@ -144,7 +144,8 @@
 
 | Date | Decision | Rationale |
 |------|----------|----------|
-| *(entries will be added as we build)* | | |
+| 2026-01-05 | Use 6s delay between code search pages, 1s between repo fetches | GitHub code search limit is ~10/min; repo API is 5000/hr. Conservative delays avoid rate limits. |
+| 2026-01-05 | Cap at 1000 results (10 pages) | GitHub code search API hard limit. Sufficient for current DHI adoption scale (~66 repos). |
 
 ---
 
