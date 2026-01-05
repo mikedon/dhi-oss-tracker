@@ -21,6 +21,7 @@ type Project struct {
 	PrimaryLanguage string    `json:"primary_language"`
 	DockerfilePath  string    `json:"dockerfile_path"`
 	FileURL         string    `json:"file_url"`
+	SourceType      string    `json:"source_type"`
 	FirstSeenAt     time.Time `json:"first_seen_at"`
 	LastSeenAt      time.Time `json:"last_seen_at"`
 	CreatedAt       time.Time `json:"created_at"`
@@ -61,6 +62,7 @@ func (db *DB) Migrate() error {
 		primary_language TEXT DEFAULT '',
 		dockerfile_path TEXT DEFAULT '',
 		file_url TEXT DEFAULT '',
+		source_type TEXT DEFAULT '',
 		first_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -93,33 +95,35 @@ func (db *DB) Migrate() error {
 
 func (db *DB) UpsertProject(p *Project) error {
 	query := `
-	INSERT INTO projects (repo_full_name, github_url, stars, description, primary_language, dockerfile_path, file_url, first_seen_at, last_seen_at, updated_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+	INSERT INTO projects (repo_full_name, github_url, stars, description, primary_language, dockerfile_path, file_url, source_type, first_seen_at, last_seen_at, updated_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 	ON CONFLICT(repo_full_name) DO UPDATE SET
 		stars = excluded.stars,
 		description = excluded.description,
 		primary_language = excluded.primary_language,
 		dockerfile_path = excluded.dockerfile_path,
 		file_url = excluded.file_url,
+		source_type = excluded.source_type,
 		last_seen_at = CURRENT_TIMESTAMP,
 		updated_at = CURRENT_TIMESTAMP
 	`
-	_, err := db.Exec(query, p.RepoFullName, p.GitHubURL, p.Stars, p.Description, p.PrimaryLanguage, p.DockerfilePath, p.FileURL)
+	_, err := db.Exec(query, p.RepoFullName, p.GitHubURL, p.Stars, p.Description, p.PrimaryLanguage, p.DockerfilePath, p.FileURL, p.SourceType)
 	return err
 }
 
 type ProjectFilter struct {
-	MinStars  int
-	MaxStars  int
-	Search    string
-	SortBy    string // stars, name, first_seen
-	SortOrder string // asc, desc
-	Limit     int
-	Offset    int
+	MinStars   int
+	MaxStars   int
+	Search     string
+	SourceType string
+	SortBy     string // stars, name, first_seen
+	SortOrder  string // asc, desc
+	Limit      int
+	Offset     int
 }
 
 func (db *DB) ListProjects(filter ProjectFilter) ([]Project, error) {
-	query := `SELECT id, repo_full_name, github_url, stars, description, primary_language, dockerfile_path, file_url, first_seen_at, last_seen_at, created_at, updated_at FROM projects WHERE 1=1`
+	query := `SELECT id, repo_full_name, github_url, stars, description, primary_language, dockerfile_path, file_url, source_type, first_seen_at, last_seen_at, created_at, updated_at FROM projects WHERE 1=1`
 	args := []interface{}{}
 
 	if filter.MinStars > 0 {
@@ -134,6 +138,10 @@ func (db *DB) ListProjects(filter ProjectFilter) ([]Project, error) {
 		query += " AND (repo_full_name LIKE ? OR description LIKE ?)"
 		searchPattern := "%" + filter.Search + "%"
 		args = append(args, searchPattern, searchPattern)
+	}
+	if filter.SourceType != "" {
+		query += " AND source_type = ?"
+		args = append(args, filter.SourceType)
 	}
 
 	// Sorting
@@ -170,13 +178,31 @@ func (db *DB) ListProjects(filter ProjectFilter) ([]Project, error) {
 	var projects []Project
 	for rows.Next() {
 		var p Project
-		err := rows.Scan(&p.ID, &p.RepoFullName, &p.GitHubURL, &p.Stars, &p.Description, &p.PrimaryLanguage, &p.DockerfilePath, &p.FileURL, &p.FirstSeenAt, &p.LastSeenAt, &p.CreatedAt, &p.UpdatedAt)
+		err := rows.Scan(&p.ID, &p.RepoFullName, &p.GitHubURL, &p.Stars, &p.Description, &p.PrimaryLanguage, &p.DockerfilePath, &p.FileURL, &p.SourceType, &p.FirstSeenAt, &p.LastSeenAt, &p.CreatedAt, &p.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
 		projects = append(projects, p)
 	}
 	return projects, rows.Err()
+}
+
+func (db *DB) GetSourceTypes() ([]string, error) {
+	rows, err := db.Query(`SELECT DISTINCT source_type FROM projects WHERE source_type != '' ORDER BY source_type`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var types []string
+	for rows.Next() {
+		var t string
+		if err := rows.Scan(&t); err != nil {
+			return nil, err
+		}
+		types = append(types, t)
+	}
+	return types, rows.Err()
 }
 
 func (db *DB) GetStats() (total int, totalStars int, popular int, notable int, err error) {

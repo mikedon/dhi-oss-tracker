@@ -31,6 +31,7 @@ func New(database *db.DB, ghClient *github.Client) *API {
 func (a *API) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/projects", a.handleProjects)
 	mux.HandleFunc("/api/stats", a.handleStats)
+	mux.HandleFunc("/api/source-types", a.handleSourceTypes)
 	mux.HandleFunc("/api/refresh", a.handleRefresh)
 	mux.HandleFunc("/api/refresh/status", a.handleRefreshStatus)
 }
@@ -45,9 +46,10 @@ func (a *API) handleProjects(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
 	filter := db.ProjectFilter{
-		Search:    q.Get("search"),
-		SortBy:    q.Get("sort"),
-		SortOrder: q.Get("order"),
+		Search:     q.Get("search"),
+		SourceType: q.Get("source_type"),
+		SortBy:     q.Get("sort"),
+		SortOrder:  q.Get("order"),
 	}
 
 	if minStars := q.Get("min_stars"); minStars != "" {
@@ -80,6 +82,24 @@ func (a *API) handleProjects(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(projects)
+}
+
+// handleSourceTypes returns list of distinct source types
+func (a *API) handleSourceTypes(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	types, err := a.db.GetSourceTypes()
+	if err != nil {
+		log.Printf("Error getting source types: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(types)
 }
 
 // handleStats returns summary statistics
@@ -182,6 +202,7 @@ func (a *API) runRefresh(jobID int64) {
 			PrimaryLanguage: p.PrimaryLanguage,
 			DockerfilePath:  p.DockerfilePath,
 			FileURL:         p.FileURL,
+			SourceType:      p.SourceType,
 		}
 		if err := a.db.UpsertProject(dbProject); err != nil {
 			log.Printf("Error upserting project %s: %v", p.RepoFullName, err)

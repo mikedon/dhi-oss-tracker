@@ -384,7 +384,14 @@
                 <input type="search" id="searchInput" placeholder="Search projects..." oninput="debounceSearch()">
                 
                 <label>
-                    Filter:
+                    Source:
+                    <select id="filterSource" onchange="loadAllProjects()">
+                        <option value="">All sources</option>
+                    </select>
+                </label>
+                
+                <label>
+                    Stars:
                     <select id="filterStars" onchange="loadAllProjects()">
                         <option value="">All stars</option>
                         <option value="1000">1000+ stars</option>
@@ -504,16 +511,38 @@
             }
         }
 
+        // Load source types for filter dropdown
+        async function loadSourceTypes() {
+            try {
+                const resp = await fetch('/api/source-types');
+                const types = await resp.json();
+                const select = document.getElementById('filterSource');
+                
+                if (types && types.length > 0) {
+                    types.forEach(type => {
+                        const option = document.createElement('option');
+                        option.value = type;
+                        option.textContent = type;
+                        select.appendChild(option);
+                    });
+                }
+            } catch (err) {
+                console.error('Failed to load source types:', err);
+            }
+        }
+
         // Load all projects with filters
         async function loadAllProjects() {
             try {
                 const search = document.getElementById('searchInput').value;
+                const sourceType = document.getElementById('filterSource').value;
                 const minStars = document.getElementById('filterStars').value;
                 const sortBy = document.getElementById('sortBy').value;
                 const order = document.getElementById('sortOrder').value;
 
                 let url = `/api/projects?sort=${sortBy}&order=${order}`;
                 if (search) url += `&search=${encodeURIComponent(search)}`;
+                if (sourceType) url += `&source_type=${encodeURIComponent(sourceType)}`;
                 if (minStars) url += `&min_stars=${minStars}`;
 
                 const resp = await fetch(url);
@@ -627,6 +656,7 @@
 
         // Initial load
         loadStats();
+        loadSourceTypes();
         loadPopularProjects();
         loadNotableProjects();
         loadAllProjects();

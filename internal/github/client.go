@@ -65,6 +65,7 @@ type Project struct {
 	PrimaryLanguage string
 	DockerfilePath  string
 	FileURL         string
+	SourceType      string
 }
 
 func (c *Client) doRequest(ctx context.Context, method, endpoint string) ([]byte, error) {
@@ -120,6 +121,7 @@ type SearchResult struct {
 	RepoFullName string
 	FilePath     string
 	FileURL      string
+	SourceType   string // e.g., "Dockerfile", "YAML", "GitHub Actions"
 }
 
 // SearchDHIUsage searches for dhi.io references across multiple file types
@@ -167,6 +169,7 @@ func (c *Client) SearchDHIUsage(ctx context.Context, progressFn func(queryName s
 						RepoFullName: item.Repository.FullName,
 						FilePath:     item.Path,
 						FileURL:      fileURL,
+						SourceType:   sq.Name,
 					}
 				}
 			}
@@ -274,6 +277,7 @@ func (c *Client) FetchAllProjects(ctx context.Context, progressFn func(status st
 			PrimaryLanguage: details.Language,
 			DockerfilePath:  searchResult.FilePath,
 			FileURL:         searchResult.FileURL,
+			SourceType:      searchResult.SourceType,
 		})
 
 		// Small delay to avoid hitting rate limits on repo API
