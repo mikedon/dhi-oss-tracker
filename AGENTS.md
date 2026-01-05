@@ -81,7 +81,7 @@
 
 **Verify:** All endpoints return correct data, refresh runs async.
 
-**Status:** ⬜ Not started
+**Status:** ✅ Complete
 
 ---
 

@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"os"
 
+	"dhi-oss-usage/internal/api"
 	"dhi-oss-usage/internal/db"
+	"dhi-oss-usage/internal/github"
 )
-
-var database *db.DB
 
 func main() {
 	// Get port from env or default to 8000
@@ -24,9 +24,14 @@ func main() {
 		dbPath = "dhi-oss-usage.db"
 	}
 
+	// Get GitHub token
+	ghToken := os.Getenv("GITHUB_TOKEN")
+	if ghToken == "" {
+		log.Println("WARNING: GITHUB_TOKEN not set, refresh will not work")
+	}
+
 	// Open database
-	var err error
-	database, err = db.Open(dbPath)
+	database, err := db.Open(dbPath)
 	if err != nil {
 		log.Fatalf("Failed to open database: %v", err)
 	}
@@ -38,10 +43,18 @@ func main() {
 	}
 	log.Println("Database initialized")
 
+	// Create GitHub client
+	ghClient := github.NewClient(ghToken)
+
+	// Create API
+	apiHandler := api.New(database, ghClient)
+
 	// Setup routes
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", healthHandler)
-	mux.HandleFunc("/api/stats", statsHandler)
+
+	// Register API routes
+	apiHandler.RegisterRoutes(mux)
 
 	log.Printf("Server starting on port %s", port)
 	if err := http.ListenAndServe(":"+port, mux); err != nil {
@@ -52,19 +65,4 @@ func main() {
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-}
-
-func statsHandler(w http.ResponseWriter, r *http.Request) {
-	total, totalStars, popular, notable, err := database.GetStats()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]int{
-		"total_projects": total,
-		"total_stars":    totalStars,
-		"popular_count":  popular,
-		"notable_count":  notable,
-	})
 }
