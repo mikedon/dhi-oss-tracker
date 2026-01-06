@@ -127,7 +127,29 @@ CREATE TABLE refresh_jobs (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- For future historical tracking
+-- Historical snapshots table
+CREATE TABLE refresh_snapshots (
+    id INTEGER PRIMARY KEY,
+    recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    total_projects INTEGER,
+    total_stars INTEGER,
+    popular_count INTEGER,   -- 1000+ stars
+    notable_count INTEGER    -- 100-999 stars
+);
+
+-- Notifications table
+CREATE TABLE notifications (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,                    -- 'slack' or 'email'
+    enabled BOOLEAN DEFAULT 1,
+    config_json TEXT NOT NULL,             -- JSON config specific to notification type
+    last_triggered_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- For future per-project historical tracking
 CREATE TABLE star_history (
     id INTEGER PRIMARY KEY,
     project_id INTEGER REFERENCES projects(id),
@@ -139,11 +161,20 @@ CREATE TABLE star_history (
 ### API Endpoints
 
 ```
-GET  /api/projects          - List all projects (with filtering/sorting)
-GET  /api/projects/:id      - Get single project details
-GET  /api/stats             - Get summary statistics
-POST /api/refresh           - Trigger a refresh job
-GET  /api/refresh/status    - Get current refresh status
+GET  /api/projects              - List all projects (with filtering/sorting)
+GET  /api/projects/:id          - Get single project details
+GET  /api/projects/new?since=   - Get projects adopted since a date
+GET  /api/stats                 - Get summary statistics
+GET  /api/history?days=N        - Get adoption history for N days
+GET  /api/source-types          - Get list of source types
+POST /api/refresh               - Trigger a refresh job
+GET  /api/refresh/status        - Get current refresh status
+GET  /api/notifications         - List all notification configs
+POST /api/notifications         - Create new notification config
+GET  /api/notifications/:id     - Get single notification config
+PUT  /api/notifications/:id     - Update notification config
+DELETE /api/notifications/:id   - Delete notification config
+POST /api/notifications/:id/test - Send test notification
 ```
 
 ### GitHub API Considerations
@@ -330,3 +361,171 @@ Returns adoption data by date based on `adopted_at`, showing daily new adoptions
 3. Can search and filter the full list
 4. Can trigger refresh and see updated data
 5. Page loads quickly from cached data
+
+---
+
+## Phase 9: Notification System
+
+### Overview
+Alert users when new projects adopt DHI via Slack or Email.
+
+### Implementation Approach
+
+**Architecture:**
+- Database-backed notification configurations
+- Pluggable notification providers (Slack webhook, SendGrid email)
+- Trigger on successful refresh when new projects are detected
+- Send to all enabled notification configs
+
+**Data Model:**
+```sql
+CREATE TABLE notifications (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,              -- 'slack' or 'email'
+    enabled BOOLEAN DEFAULT 1,
+    config_json TEXT NOT NULL,       -- JSON config for the provider
+    last_triggered_at TIMESTAMP,
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP
+);
+```
+
+**Config JSON structure varies by type:**
+- **Slack:** `{"webhook_url": "https://...", "channel": "#optional-override"}`
+- **Email:** `{"to": "recipient@example.com", "from": "optional-sender@example.com"}`
+
+### Notification Providers
+
+#### 1. Slack
+- Uses incoming webhook URL
+- Sends rich formatted message with project details
+- Optional channel override in config
+
+#### 2. Email (SendGrid)
+- **Simplified Configuration:** Uses SendGrid credentials from environment variables
+- Users only need to provide recipient email address
+- Global configuration via `.env`:
+  - `SENDGRID_API_KEY` - SendGrid API key (required)
+  - `SENDGRID_FROM_EMAIL` - Default sender email (required)
+  - `SENDGRID_SMTP_HOST` - SMTP host (default: smtp.sendgrid.net)
+  - `SENDGRID_SMTP_PORT` - SMTP port (default: 587)
+  - `SENDGRID_USERNAME` - SMTP username (default: apikey)
+- Optional per-notification `from` override
+- Sends HTML email with project list and adoption details
+
+### API Endpoints
+
+**GET /api/notifications**
+```json
+[
+  {
+    "id": 1,
+    "name": "Team Slack",
+    "type": "slack",
+    "enabled": true,
+    "config_json": "{\"webhook_url\":\"https://...\"}",
+    "last_triggered_at": "2026-01-06T10:00:00Z",
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z"
+  }
+]
+```
+
+**POST /api/notifications**
+```json
+{
+  "name": "Team Email",
+  "type": "email",
+  "enabled": true,
+  "config_json": "{\"to\":\"team@example.com\"}"
+}
+```
+
+**PUT /api/notifications/:id**
+Update notification configuration (same body as POST)
+
+**DELETE /api/notifications/:id**
+Delete notification configuration
+
+**POST /api/notifications/:id/test**
+Send a test notification with sample data
+
+### UI: Notifications Tab
+
+**Layout:**
+- Navigation: [Dashboard] [History] **[Notifications]**
+- "Add Notification" button
+- List of notification cards showing:
+  - Name and type (with icon)
+  - Enabled toggle switch
+  - Last triggered timestamp
+  - Test button
+  - Delete button
+
+**Add/Edit Modal:**
+- Name field
+- Type selector (Slack / Email)
+- Dynamic config fields based on type:
+  - **Slack:** Webhook URL, optional channel
+  - **Email:** Recipient email (to), optional sender email (from)
+- Save/Cancel buttons
+
+### Trigger Logic
+
+**When:** After each successful refresh
+
+**Condition:** New projects from this week (calendar week, Monday-Sunday)
+
+**Process:**
+1. Get all projects with `adopted_at` in current calendar week
+2. If none, skip notification
+3. For each enabled notification config:
+   - Format message with project details
+   - Call appropriate provider (Slack/Email)
+   - Log success/failure
+   - Update `last_triggered_at` on success
+
+**Message Content:**
+- Number of new projects
+- For each project:
+  - Repo name (linked)
+  - Stars
+  - Description
+  - Link to adoption commit
+
+### Error Handling
+
+- Provider failures are logged but don't stop other notifications
+- Failed notifications don't update `last_triggered_at`
+- Test endpoint returns immediate feedback on success/failure
+- Invalid config_json returns 400 Bad Request
+
+### Configuration Requirements
+
+**For Email notifications:**
+```bash
+# .env file
+SENDGRID_API_KEY=SG.your_api_key_here
+SENDGRID_FROM_EMAIL=noreply@yourdomain.com
+
+# Optional overrides
+SENDGRID_SMTP_HOST=smtp.sendgrid.net
+SENDGRID_SMTP_PORT=587
+SENDGRID_USERNAME=apikey
+```
+
+**For Slack notifications:**
+- Webhook URL created in Slack app settings
+- No environment variables required
+
+### Success Criteria
+
+1. ✅ Can create, edit, and delete notification configurations
+2. ✅ Can enable/disable notifications with toggle
+3. ✅ Can send test notifications to verify configuration
+4. ✅ Notifications automatically trigger after refresh with new projects
+5. ✅ Both Slack and Email providers work correctly
+6. ✅ Errors are logged and don't break the application
+7. ✅ UI clearly shows notification status and last triggered time
+8. ✅ Email configuration simplified to use SendGrid from environment

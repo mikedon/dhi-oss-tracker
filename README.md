@@ -24,6 +24,14 @@ A web application to track adoption of [Docker Hardened Images (DHI)](https://ww
 - Manual refresh button available
 - Shows "Last updated" and "Next scheduled" times
 
+### Notifications Tab
+- **Alert System:** Get notified when new projects adopt DHI
+- **Email Notifications:** Uses SendGrid for email delivery (simplified configuration)
+- **Slack Notifications:** Post to Slack channels via webhooks
+- **Manage Notifications:** Add, edit, enable/disable, delete, and test notifications
+- **Auto-trigger:** Notifications fire automatically when new projects are detected during refresh
+- **Test Functionality:** Verify notification configuration with test messages
+
 ## How It Works
 
 1. **GitHub Code Search:** Searches for `dhi.io` references in:
@@ -55,6 +63,12 @@ A web application to track adoption of [Docker Hardened Images (DHI)](https://ww
 | `GET /api/refresh/status` | Current refresh status and next scheduled time |
 | `POST /api/refresh` | Trigger manual refresh |
 | `GET /api/source-types` | List of source types (Dockerfile, YAML, etc.) |
+| `GET /api/notifications` | List all notification configurations |
+| `POST /api/notifications` | Create new notification configuration |
+| `GET /api/notifications/:id` | Get single notification configuration |
+| `PUT /api/notifications/:id` | Update notification configuration |
+| `DELETE /api/notifications/:id` | Delete notification configuration |
+| `POST /api/notifications/:id/test` | Send test notification |
 
 ## Project Structure
 
@@ -62,9 +76,13 @@ A web application to track adoption of [Docker Hardened Images (DHI)](https://ww
 dhi-oss-usage/
 ├── cmd/server/main.go      # Entry point, scheduler setup
 ├── internal/
-│   ├── api/api.go          # REST API handlers
-│   ├── db/db.go            # SQLite database layer
-│   └── github/client.go    # GitHub API client
+│   ├── api/api.go               # REST API handlers
+│   ├── db/db.go                 # SQLite database layer
+│   ├── github/client.go         # GitHub API client
+│   └── notifications/           # Notification system
+│       ├── notifications.go     # Service layer
+│       ├── slack.go             # Slack webhook provider
+│       └── email.go             # SendGrid email provider
 ├── static/index.html       # Frontend UI
 ├── spec.md                 # Detailed specification
 ├── AGENTS.md               # Development notes and decisions
@@ -111,6 +129,11 @@ Environment variables:
 | `GITHUB_TOKEN` | (required) | GitHub PAT with `public_repo` scope |
 | `REFRESH_SCHEDULE` | `0 3 * * *` | Cron schedule for auto-refresh |
 | `STATIC_DIR` | `static` | Static files directory |
+| `SENDGRID_API_KEY` | (required for email) | SendGrid API key for email notifications |
+| `SENDGRID_FROM_EMAIL` | (required for email) | Default sender email address |
+| `SENDGRID_SMTP_HOST` | `smtp.sendgrid.net` | SendGrid SMTP host |
+| `SENDGRID_SMTP_PORT` | `587` | SendGrid SMTP port |
+| `SENDGRID_USERNAME` | `apikey` | SendGrid SMTP username |
 
 ## Local Development
 
@@ -127,6 +150,53 @@ go build -o server ./cmd/server
 
 # Open http://localhost:8000
 ```
+
+## Setting Up Notifications
+
+### Email Notifications (SendGrid)
+
+1. **Get SendGrid API Key:**
+   - Sign up at [sendgrid.com](https://sendgrid.com) (free tier: 100 emails/day)
+   - Create an API key with "Mail Send" permissions
+
+2. **Configure environment:**
+   ```bash
+   # In .env file
+   SENDGRID_API_KEY=SG.your_api_key_here
+   SENDGRID_FROM_EMAIL=noreply@yourdomain.com
+   ```
+
+3. **Verify sender:** SendGrid requires sender verification - verify your email or domain
+
+4. **Create notification in UI:**
+   - Open Notifications tab
+   - Click "Add Notification"
+   - Select "Email" type
+   - Enter recipient email
+   - Test and enable
+
+### Slack Notifications
+
+1. **Create Slack Webhook:**
+   - Go to [api.slack.com/apps](https://api.slack.com/apps)
+   - Create an app and enable Incoming Webhooks
+   - Add webhook to desired channel
+
+2. **Create notification in UI:**
+   - Open Notifications tab
+   - Click "Add Notification"
+   - Select "Slack" type
+   - Paste webhook URL
+   - Test and enable
+
+### How Notifications Work
+
+- **Trigger:** Automatic after each successful refresh when new projects detected
+- **Scope:** New projects adopted in the current calendar week (Monday-Sunday)
+- **Content:** Project name, stars, description, link to adoption commit
+- **Management:** Enable/disable, test, or delete notifications anytime
+
+See [SENDGRID_SETUP.md](SENDGRID_SETUP.md) for detailed email configuration instructions.
 
 ## Deployment
 
@@ -171,6 +241,17 @@ CREATE TABLE refresh_snapshots (
     total_stars INTEGER,
     popular_count INTEGER,
     notable_count INTEGER
+);
+
+CREATE TABLE notifications (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,              -- 'slack' or 'email'
+    enabled BOOLEAN DEFAULT 1,
+    config_json TEXT NOT NULL,       -- JSON config specific to type
+    last_triggered_at TIMESTAMP,
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP
 );
 ```
 
