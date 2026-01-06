@@ -2,7 +2,7 @@
 
 ## Current State
 
-**Status:** ✅ Phase 8 complete
+**Status:** ✅ Phase 9 complete
 
 **Architecture:** 
 - Go backend + SQLite + vanilla HTML/JS frontend
@@ -11,6 +11,7 @@
 - 91 projects tracked, 172K+ combined stars
 - Tracks actual adoption dates (from git history) with links to adoption commits
 - Historical snapshots recorded on each refresh
+- Notification system for new project alerts (Slack + Email)
 - GitHub PAT stored in `.env` (not committed)
 - Public URL: https://dhi-oss-usage.exe.xyz:8000/
 
@@ -21,6 +22,7 @@
 - `internal/db/db.go` - Database layer with SQLite
 - `internal/github/client.go` - GitHub API client
 - `internal/api/api.go` - REST API handlers
+- `internal/notifications/notifications.go` - Notification service layer
 - `static/index.html` - Frontend UI
 - `dhi-oss-usage.service` - Systemd service file
 - `dhi-oss-usage.db` - SQLite database (gitignored)
@@ -220,8 +222,83 @@
 
 ---
 
+### Phase 9: Notification System
+**Goal:** Alert users when new projects adopt DHI via Slack or Email.
+
+**Approach:** 
+- Database-backed notification configurations
+- Pluggable notification providers (Slack webhook, SMTP email)
+- Trigger on successful refresh when new projects are found
+
+**Data Model:**
+- New `notifications` table: id, name, type, enabled, config_json, last_triggered_at, created_at, updated_at
+- Config stored as JSON to support different provider requirements
+
+**Notification Providers:**
+1. **Slack:**
+   - Webhook URL (required)
+   - Channel override (optional)
+   - Sends rich formatted message with project details
+
+2. **Email:**
+   - SMTP configuration: host, port, username, password
+   - To/From addresses
+   - Sends HTML email with project list
+
+**API Endpoints:**
+- `GET /api/notifications` - List all notification configs
+- `POST /api/notifications` - Create new notification config
+- `GET /api/notifications/:id` - Get single notification config
+- `PUT /api/notifications/:id` - Update notification config
+- `DELETE /api/notifications/:id` - Delete notification config
+- `POST /api/notifications/:id/test` - Send test notification
+
+**UI Changes:**
+- New "Notifications" tab in navigation
+- Notification management interface:
+  - Add/Edit modal for creating/editing notification configs
+  - Card-based list showing all configurations
+  - Toggle switches to enable/disable notifications
+  - Test button to verify configuration
+  - Delete functionality
+
+**Trigger Logic:**
+- After each successful refresh
+- Check for new projects from this week (calendar week, Monday-Sunday)
+- Send to all enabled notification configs
+- Record last_triggered_at timestamp
+- Log all notification attempts (success/failure)
+
+**Tasks:**
+1. Create notifications table with migration
+2. Implement notification service layer (interface + providers)
+3. Add notification CRUD API endpoints
+4. Add test notification endpoint
+5. Integrate notification triggers in refresh job
+6. Build Notifications tab UI
+7. Add notification configuration modal
+8. Add notification cards with toggle/test/delete
+9. Test end-to-end with both Slack and Email
+
+**Verify:**
+- Can create/edit/delete notification configs
+- Test notification sends successfully
+- Notifications fire after refresh with new projects
+- Enable/disable toggle works
+- UI handles both Slack and Email config types
+- Errors are logged appropriately
+
+**Status:** ✅ Complete (2026-01-06)
+- Database: notifications table with full CRUD
+- Service layer: Slack webhook and SMTP email providers
+- API: Full REST API for notification management + test endpoint
+- UI: Notifications tab with add/edit modal, notification cards, toggle switches
+- Triggers: Automatic notifications after refresh when new projects detected
+- Logging: All notification attempts logged with success/failure
+
+---
+
 ### Future Ideas (Not Yet Planned)
-- Email/Slack notifications for new popular projects
 - Export data as CSV/JSON
 - Compare DHI adoption vs other hardened image solutions
 
