@@ -2,7 +2,7 @@
 
 ## Current State
 
-**Status:** ✅ Phases 1-6 complete, planning Phase 7-8
+**Status:** Phase 8 in progress - backend complete, frontend next
 
 **Architecture:** 
 - Go backend + SQLite + vanilla HTML/JS frontend
@@ -166,7 +166,7 @@
 - Logs show scheduled vs manual runs
 - Manual refresh still works
 
-**Status:** ⬜ Not started
+**Status:** ✅ Complete (2026-01-05)
 
 ---
 
@@ -209,7 +209,13 @@
 - New projects highlighted on dashboard
 - Data persists across restarts
 
-**Status:** ⬜ Not started
+**Status:** 🔄 In Progress
+- ✅ Backend complete (committed 2026-01-06)
+  - refresh_snapshots table and recording
+  - /api/history endpoint
+  - /api/projects/new endpoint  
+  - new_this_week in /api/stats
+- ⬜ Frontend updates pending
 
 ---
 
