@@ -8,7 +8,9 @@
 - Go backend + SQLite + vanilla HTML/JS frontend
 - Running on port 8000 via systemd
 - Searches: Dockerfiles (filename:Dockerfile), YAML/K8s (image: dhi.io/), GitHub Actions
-- 90 projects tracked, 172K+ combined stars (false positives removed)
+- 91 projects tracked, 172K+ combined stars
+- Tracks actual adoption dates (from git history) with links to adoption commits
+- Historical snapshots recorded on each refresh
 - GitHub PAT stored in `.env` (not committed)
 - Public URL: https://dhi-oss-usage.exe.xyz:8000/
 
@@ -214,6 +216,7 @@
 - Frontend: "New This Week" section, Dashboard/History tabs, Chart.js trend chart, projects by week list
 - Adoption dates: Fetches actual adoption date from GitHub Commits API (first commit of file)
 - Uses adopted_at instead of first_seen_at for accurate adoption timelines
+- Adoption commit links: Stores and displays clickable links to the exact commit that added DHI
 
 ---
 
@@ -233,6 +236,8 @@
 | 2026-01-05 | Search multiple file types: Dockerfile, YAML, GitHub Actions | Expands coverage. Catches k8s manifests, docker-compose, CI configs. |
 | 2026-01-05 | Use precise search patterns to exclude siddhi.io false positives | "FROM dhi.io" for Dockerfiles, "image: dhi.io/" for YAML. Siddhi.io is unrelated stream processing platform. |
 | 2026-01-05 | Add filename:Dockerfile filter | Excludes documentation/README files that contain DHI examples but aren't actual usage. |
+| 2026-01-06 | Track adopted_at from git history instead of first_seen_at | Shows when projects actually adopted DHI, not when we discovered them. More accurate adoption timelines. |
+| 2026-01-06 | Store adoption_commit URL | Allows users to click through to see the exact commit that added DHI to a project. |
 
 ---
 

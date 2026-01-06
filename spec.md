@@ -106,6 +106,10 @@ CREATE TABLE projects (
     description TEXT,
     primary_language TEXT,
     dockerfile_path TEXT,                  -- path where dhi.io found
+    file_url TEXT,                         -- direct link to file on GitHub
+    source_type TEXT,                      -- 'Dockerfiles', 'YAML/K8s', 'GitHub Actions'
+    adopted_at TIMESTAMP,                  -- when project actually adopted DHI (from git history)
+    adoption_commit TEXT,                  -- URL to the commit that added DHI
     first_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -260,20 +264,34 @@ CREATE TABLE refresh_snapshots (
 **GET /api/projects/new?since=7d**
 ```json
 [
-  {"repo_full_name": "new/project", "stars": 50, "first_seen_at": "2026-01-04T..."}
+  {
+    "repo_full_name": "new/project",
+    "stars": 50,
+    "adopted_at": "2026-01-04T...",
+    "adoption_commit": "https://github.com/owner/repo/commit/abc123"
+  }
 ]
 ```
+
+### Adoption Date Tracking
+
+**Approach:**
+- Use GitHub Commits API to get the first commit of each file containing dhi.io
+- Store as `adopted_at` (actual adoption date) distinct from `first_seen_at` (when we discovered it)
+- Also store `adoption_commit` URL linking to the exact commit
+- This gives accurate adoption timelines based on when projects actually merged DHI changes
 
 ### UI Changes
 
 **Main Dashboard:**
-- Stats bar: Add "+N new this week" indicator
-- New collapsible section: "New This Week" showing new project cards (if any)
+- Stats bar: Add "+N new this week" indicator (based on `adopted_at`)
+- New collapsible section: "New This Week" showing recently adopted project cards
+- "Adopted" dates are clickable links to the adoption commit
 
 **New "History" Tab:**
-- Line chart showing total projects over time (using Chart.js or similar)
-- Optional: second line for total stars
-- Table/list of new projects grouped by week/month
+- Line chart showing total projects over time (using Chart.js)
+- Second line showing total stars
+- New projects grouped by week with clickable commit links (🔗 icon)
 
 ### UI Mockup (History Tab)
 ```
