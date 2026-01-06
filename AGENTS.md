@@ -260,3 +260,8 @@ See `spec.md` for detailed requirements.
 **Reported:** 2026-01-06
 **Description:** Header shows "Last updated" but should also show when the next scheduled refresh will occur.
 **Fix:** Added `SetNextRefreshFunc` to API, expose `next_refresh` in status endpoint, display in header as "Next: {time}".
+
+### Bug 3: History chart x-axis shows repeated dates
+**Status:** 🔴 Open
+**Reported:** 2026-01-06
+**Description:** History tab chart shows "1/5" repeated multiple times on x-axis. Should show adoption trends over time (e.g., last 2 weeks) based on when projects adopted DHI, not when snapshots were recorded.
