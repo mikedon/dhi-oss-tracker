@@ -256,6 +256,7 @@ See `spec.md` for detailed requirements.
 **Fix:** Changed from "last 7 days" to actual calendar week (Monday-Sunday). Added `startOfWeek()` helper and "thisweek" option to API.
 
 ### Bug 2: Add "Next update scheduled" to header
-**Status:** 🔴 Open
+**Status:** ✅ Fixed (2026-01-06)
 **Reported:** 2026-01-06
 **Description:** Header shows "Last updated" but should also show when the next scheduled refresh will occur.
+**Fix:** Added `SetNextRefreshFunc` to API, expose `next_refresh` in status endpoint, display in header as "Next: {time}".

@@ -740,8 +740,16 @@
                     statusEl.textContent = '🔄 Refreshing...';
                     btn.disabled = true;
                 } else if (data.last_job) {
-                    const date = new Date(data.last_job.completed_at || data.last_job.created_at);
-                    statusEl.textContent = `Last updated: ${date.toLocaleString()}`;
+                    const lastDate = new Date(data.last_job.completed_at || data.last_job.created_at);
+                    let statusText = `Last updated: ${lastDate.toLocaleString()}`;
+                    
+                    // Add next scheduled refresh if available
+                    if (data.next_refresh) {
+                        const nextDate = new Date(data.next_refresh);
+                        statusText += ` • Next: ${nextDate.toLocaleString()}`;
+                    }
+                    
+                    statusEl.textContent = statusText;
                     btn.disabled = false;
                 } else {
                     statusEl.textContent = 'No data yet';

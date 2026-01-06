@@ -109,6 +109,16 @@ func setupScheduler(apiHandler *api.API, schedule string) {
 	}
 	c.Start()
 	log.Printf("Scheduler started: refresh at '%s'", schedule)
+
+	// Set function to get next scheduled refresh time
+	apiHandler.SetNextRefreshFunc(func() *time.Time {
+		entries := c.Entries()
+		if len(entries) > 0 {
+			next := entries[0].Next
+			return &next
+		}
+		return nil
+	})
 }
 
 func checkAndRefreshStaleData(apiHandler *api.API) {

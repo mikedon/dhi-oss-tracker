@@ -16,10 +16,11 @@ import (
 )
 
 type API struct {
-	db           *db.DB
-	ghClient     *github.Client
-	refreshMu    sync.Mutex
+	db             *db.DB
+	ghClient       *github.Client
+	refreshMu      sync.Mutex
 	refreshRunning bool
+	nextRefreshFn  func() *time.Time // function to get next scheduled refresh time
 }
 
 func New(database *db.DB, ghClient *github.Client) *API {
@@ -30,6 +31,11 @@ func New(database *db.DB, ghClient *github.Client) *API {
 }
 
 // RegisterRoutes adds API routes to the mux
+// SetNextRefreshFunc sets a function that returns the next scheduled refresh time
+func (a *API) SetNextRefreshFunc(fn func() *time.Time) {
+	a.nextRefreshFn = fn
+}
+
 func (a *API) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/projects", a.handleProjects)
 	mux.HandleFunc("/api/projects/new", a.handleNewProjects)
@@ -454,6 +460,13 @@ func (a *API) handleRefreshStatus(w http.ResponseWriter, r *http.Request) {
 
 	if job != nil {
 		response["last_job"] = job
+	}
+
+	// Add next scheduled refresh time if available
+	if a.nextRefreshFn != nil {
+		if nextTime := a.nextRefreshFn(); nextTime != nil {
+			response["next_refresh"] = nextTime
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
