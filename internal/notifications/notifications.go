@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/smtp"
+	"os"
 	"strings"
 	"time"
 )
@@ -270,16 +271,17 @@ func (p *slackProvider) Send(msg Message) error {
 // Email Provider
 
 type EmailConfig struct {
-	To           string `json:"to"`
-	SMTPHost     string `json:"smtp_host"`
-	SMTPPort     int    `json:"smtp_port"`
-	SMTPUsername string `json:"smtp_username"`
-	SMTPPassword string `json:"smtp_password"`
-	From         string `json:"from"`
+	To   string `json:"to"`
+	From string `json:"from,omitempty"`
 }
 
 type emailProvider struct {
-	config EmailConfig
+	config       EmailConfig
+	smtpHost     string
+	smtpPort     string
+	smtpUsername string
+	smtpPassword string
+	smtpFrom     string
 }
 
 func newEmailProvider(configJSON string) (*emailProvider, error) {
@@ -287,10 +289,34 @@ func newEmailProvider(configJSON string) (*emailProvider, error) {
 	if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
 		return nil, fmt.Errorf("parsing email config: %w", err)
 	}
-	if config.To == "" || config.SMTPHost == "" || config.SMTPPort == 0 || config.From == "" {
-		return nil, fmt.Errorf("missing required email config fields")
+	if config.To == "" {
+		return nil, fmt.Errorf("recipient email (to) is required")
 	}
-	return &emailProvider{config: config}, nil
+
+	// Get SendGrid credentials from environment
+	smtpHost := getEnv("SENDGRID_SMTP_HOST", "smtp.sendgrid.net")
+	smtpPort := getEnv("SENDGRID_SMTP_PORT", "587")
+	smtpUsername := getEnv("SENDGRID_USERNAME", "apikey")
+	smtpPassword := getEnv("SENDGRID_API_KEY", "")
+	smtpFrom := getEnv("SENDGRID_FROM_EMAIL", "noreply@dhi-tracker.local")
+
+	if smtpPassword == "" {
+		return nil, fmt.Errorf("SENDGRID_API_KEY environment variable is required")
+	}
+
+	// Allow config to override from address
+	if config.From != "" {
+		smtpFrom = config.From
+	}
+
+	return &emailProvider{
+		config:       config,
+		smtpHost:     smtpHost,
+		smtpPort:     smtpPort,
+		smtpUsername: smtpUsername,
+		smtpPassword: smtpPassword,
+		smtpFrom:     smtpFrom,
+	}, nil
 }
 
 func (p *emailProvider) Type() string {
@@ -303,7 +329,7 @@ func (p *emailProvider) Send(msg Message) error {
 	body := msg.Body
 
 	headers := make(map[string]string)
-	headers["From"] = p.config.From
+	headers["From"] = p.smtpFrom
 	headers["To"] = p.config.To
 	headers["Subject"] = subject
 	headers["MIME-Version"] = "1.0"
@@ -316,18 +342,22 @@ func (p *emailProvider) Send(msg Message) error {
 	emailMsg.WriteString("\r\n")
 	emailMsg.WriteString(body)
 
-	// Send email
-	addr := fmt.Sprintf("%s:%d", p.config.SMTPHost, p.config.SMTPPort)
-	
-	var auth smtp.Auth
-	if p.config.SMTPUsername != "" && p.config.SMTPPassword != "" {
-		auth = smtp.PlainAuth("", p.config.SMTPUsername, p.config.SMTPPassword, p.config.SMTPHost)
-	}
+	// Send email via SendGrid
+	addr := fmt.Sprintf("%s:%s", p.smtpHost, p.smtpPort)
+	auth := smtp.PlainAuth("", p.smtpUsername, p.smtpPassword, p.smtpHost)
 
-	err := smtp.SendMail(addr, auth, p.config.From, []string{p.config.To}, []byte(emailMsg.String()))
+	err := smtp.SendMail(addr, auth, p.smtpFrom, []string{p.config.To}, []byte(emailMsg.String()))
 	if err != nil {
-		return fmt.Errorf("sending email: %w", err)
+		return fmt.Errorf("sending email via SendGrid: %w", err)
 	}
 
 	return nil
+}
+
+// Helper function to get environment variable with default
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
 }

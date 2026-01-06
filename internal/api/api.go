@@ -599,8 +599,8 @@ func (a *API) createNotification(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("Invalid email config: %v", err), http.StatusBadRequest)
 			return
 		}
-		if emailConfig.To == "" || emailConfig.SMTPHost == "" || emailConfig.SMTPPort == 0 || emailConfig.From == "" {
-			http.Error(w, "to, smtp_host, smtp_port, and from are required for email notifications", http.StatusBadRequest)
+		if emailConfig.To == "" {
+			http.Error(w, "to (recipient email) is required for email notifications", http.StatusBadRequest)
 			return
 		}
 	}

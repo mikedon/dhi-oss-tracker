@@ -819,26 +819,17 @@
                     <div class="form-group">
                         <label for="emailTo">To Email *</label>
                         <input type="email" id="emailTo" placeholder="user@example.com">
+                        <small style="color: #666; display: block; margin-top: 4px;">Email address where notifications will be sent</small>
                     </div>
                     <div class="form-group">
-                        <label for="emailFrom">From Email *</label>
-                        <input type="email" id="emailFrom" placeholder="noreply@example.com">
+                        <label for="emailFrom">From Email (Optional)</label>
+                        <input type="email" id="emailFrom" placeholder="noreply@dhi-tracker.local">
+                        <small style="color: #666; display: block; margin-top: 4px;">Sender email address (default: noreply@dhi-tracker.local)</small>
                     </div>
-                    <div class="form-group">
-                        <label for="emailHost">SMTP Host *</label>
-                        <input type="text" id="emailHost" placeholder="smtp.gmail.com">
-                    </div>
-                    <div class="form-group">
-                        <label for="emailPort">SMTP Port *</label>
-                        <input type="number" id="emailPort" placeholder="587">
-                    </div>
-                    <div class="form-group">
-                        <label for="emailUsername">SMTP Username</label>
-                        <input type="text" id="emailUsername" placeholder="Optional">
-                    </div>
-                    <div class="form-group">
-                        <label for="emailPassword">SMTP Password</label>
-                        <input type="password" id="emailPassword" placeholder="Optional">
+                    <div style="background: #e3f2fd; padding: 12px; border-radius: 4px; margin-top: 12px;">
+                        <small style="color: #1976d2; display: block;">
+                            ℹ️ SendGrid is configured via environment variables (SENDGRID_API_KEY, SENDGRID_FROM_EMAIL)
+                        </small>
                     </div>
                 </div>
 
@@ -1361,13 +1352,14 @@
                 };
             } else if (type === 'email') {
                 configJson = {
-                    to: document.getElementById('emailTo').value,
-                    from: document.getElementById('emailFrom').value,
-                    smtp_host: document.getElementById('emailHost').value,
-                    smtp_port: parseInt(document.getElementById('emailPort').value),
-                    smtp_username: document.getElementById('emailUsername').value,
-                    smtp_password: document.getElementById('emailPassword').value
+                    to: document.getElementById('emailTo').value
                 };
+                
+                // Add optional from field if provided
+                const fromEmail = document.getElementById('emailFrom').value;
+                if (fromEmail) {
+                    configJson.from = fromEmail;
+                }
             }
             
             const payload = {
@@ -1421,10 +1413,6 @@
                 } else if (notif.type === 'email') {
                     document.getElementById('emailTo').value = config.to || '';
                     document.getElementById('emailFrom').value = config.from || '';
-                    document.getElementById('emailHost').value = config.smtp_host || '';
-                    document.getElementById('emailPort').value = config.smtp_port || '';
-                    document.getElementById('emailUsername').value = config.smtp_username || '';
-                    document.getElementById('emailPassword').value = config.smtp_password || '';
                 }
                 
                 updateConfigFields();
