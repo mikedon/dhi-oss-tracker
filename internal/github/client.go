@@ -209,6 +209,66 @@ func (c *Client) SearchDHIUsage(ctx context.Context, progressFn func(queryName s
 	return repos, nil
 }
 
+// CommitInfo represents a commit from GitHub API
+type CommitInfo struct {
+	Commit struct {
+		Author struct {
+			Date time.Time `json:"date"`
+		} `json:"author"`
+	} `json:"commit"`
+}
+
+// GetFileFirstCommitDate gets the date of the first commit for a file
+// This approximates when DHI was adopted (when the file was created or dhi.io was added)
+func (c *Client) GetFileFirstCommitDate(ctx context.Context, repoFullName, filePath string) (*time.Time, error) {
+	// Get commits for this file, oldest first (we want the first commit)
+	// GitHub returns newest first by default, so we need to get all and take the last
+	// Or we can use per_page=1 and check if there's a Link header for "last" page
+	
+	path := url.PathEscape(filePath)
+	// First, try to get a small page to see total
+	endpoint := fmt.Sprintf("/repos/%s/commits?path=%s&per_page=1", repoFullName, path)
+	
+	body, err := c.doRequest(ctx, "GET", endpoint)
+	if err != nil {
+		return nil, err
+	}
+	
+	var commits []CommitInfo
+	if err := json.Unmarshal(body, &commits); err != nil {
+		return nil, err
+	}
+	
+	if len(commits) == 0 {
+		return nil, fmt.Errorf("no commits found for file %s", filePath)
+	}
+	
+	// If only one commit, return it
+	if len(commits) == 1 {
+		return &commits[0].Commit.Author.Date, nil
+	}
+	
+	// Otherwise, need to paginate to get the oldest commit
+	// Get up to 100 commits and take the oldest
+	endpoint = fmt.Sprintf("/repos/%s/commits?path=%s&per_page=100", repoFullName, path)
+	body, err = c.doRequest(ctx, "GET", endpoint)
+	if err != nil {
+		return nil, err
+	}
+	
+	if err := json.Unmarshal(body, &commits); err != nil {
+		return nil, err
+	}
+	
+	if len(commits) == 0 {
+		return nil, fmt.Errorf("no commits found for file %s", filePath)
+	}
+	
+	// Return the oldest commit (last in the array since GitHub returns newest first)
+	oldest := commits[len(commits)-1]
+	return &oldest.Commit.Author.Date, nil
+}
+
 // GetRepoDetails fetches details for a single repository
 func (c *Client) GetRepoDetails(ctx context.Context, repoFullName string) (*RepoDetails, error) {
 	endpoint := "/repos/" + repoFullName

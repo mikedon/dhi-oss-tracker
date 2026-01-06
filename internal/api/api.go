@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -225,6 +226,9 @@ func (a *API) runRefresh(jobID int64, source string) {
 		log.Printf("Error completing job: %v", err)
 	}
 
+	// Fetch adoption dates for projects that don't have them
+	a.fetchAdoptionDates(ctx)
+
 	// Record snapshot for historical tracking
 	if err := a.db.RecordSnapshot(); err != nil {
 		log.Printf("Error recording snapshot: %v", err)
@@ -233,6 +237,61 @@ func (a *API) runRefresh(jobID int64, source string) {
 	}
 
 	log.Printf("Refresh job %d completed (source: %s): %d projects", jobID, source, len(projects))
+}
+
+// fetchAdoptionDates fetches adoption dates for projects that don't have them
+func (a *API) fetchAdoptionDates(ctx context.Context) {
+	projects, err := a.db.GetProjectsWithoutAdoptionDate()
+	if err != nil {
+		log.Printf("Error getting projects without adoption date: %v", err)
+		return
+	}
+
+	if len(projects) == 0 {
+		log.Printf("All projects have adoption dates")
+		return
+	}
+
+	log.Printf("Fetching adoption dates for %d projects...", len(projects))
+
+	for i, p := range projects {
+		select {
+		case <-ctx.Done():
+			log.Printf("Context cancelled, stopping adoption date fetch")
+			return
+		default:
+		}
+
+		log.Printf("Fetching adoption date for %s (%d/%d)", p.RepoFullName, i+1, len(projects))
+
+		adoptedAt, err := a.ghClient.GetFileFirstCommitDate(ctx, p.RepoFullName, p.DockerfilePath)
+		if err != nil {
+			log.Printf("Error getting adoption date for %s: %v", p.RepoFullName, err)
+			// If rate limited, wait and retry
+			if strings.Contains(err.Error(), "rate limited") {
+				log.Printf("Rate limited, waiting 60s...")
+				time.Sleep(60 * time.Second)
+				adoptedAt, err = a.ghClient.GetFileFirstCommitDate(ctx, p.RepoFullName, p.DockerfilePath)
+				if err != nil {
+					log.Printf("Retry failed for %s: %v", p.RepoFullName, err)
+					continue
+				}
+			} else {
+				continue
+			}
+		}
+
+		if err := a.db.UpdateProjectAdoptionDate(p.ID, *adoptedAt); err != nil {
+			log.Printf("Error updating adoption date for %s: %v", p.RepoFullName, err)
+		} else {
+			log.Printf("Set adoption date for %s: %s", p.RepoFullName, adoptedAt.Format("2006-01-02"))
+		}
+
+		// Rate limit: commits API is part of the 5000/hr limit
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	log.Printf("Finished fetching adoption dates")
 }
 
 // TriggerRefresh starts a refresh if one isn't already running.

@@ -13,19 +13,20 @@ type DB struct {
 }
 
 type Project struct {
-	ID              int64     `json:"id"`
-	RepoFullName    string    `json:"repo_full_name"`
-	GitHubURL       string    `json:"github_url"`
-	Stars           int       `json:"stars"`
-	Description     string    `json:"description"`
-	PrimaryLanguage string    `json:"primary_language"`
-	DockerfilePath  string    `json:"dockerfile_path"`
-	FileURL         string    `json:"file_url"`
-	SourceType      string    `json:"source_type"`
-	FirstSeenAt     time.Time `json:"first_seen_at"`
-	LastSeenAt      time.Time `json:"last_seen_at"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID              int64      `json:"id"`
+	RepoFullName    string     `json:"repo_full_name"`
+	GitHubURL       string     `json:"github_url"`
+	Stars           int        `json:"stars"`
+	Description     string     `json:"description"`
+	PrimaryLanguage string     `json:"primary_language"`
+	DockerfilePath  string     `json:"dockerfile_path"`
+	FileURL         string     `json:"file_url"`
+	SourceType      string     `json:"source_type"`
+	AdoptedAt       *time.Time `json:"adopted_at"`
+	FirstSeenAt     time.Time  `json:"first_seen_at"`
+	LastSeenAt      time.Time  `json:"last_seen_at"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
 }
 
 type RefreshJob struct {
@@ -72,6 +73,7 @@ func (db *DB) Migrate() error {
 		dockerfile_path TEXT DEFAULT '',
 		file_url TEXT DEFAULT '',
 		source_type TEXT DEFAULT '',
+		adopted_at TIMESTAMP,
 		first_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -100,13 +102,19 @@ func (db *DB) Migrate() error {
 	CREATE INDEX IF NOT EXISTS idx_projects_stars ON projects(stars DESC);
 	CREATE INDEX IF NOT EXISTS idx_projects_repo ON projects(repo_full_name);
 	CREATE INDEX IF NOT EXISTS idx_projects_first_seen ON projects(first_seen_at DESC);
+	CREATE INDEX IF NOT EXISTS idx_projects_adopted ON projects(adopted_at DESC);
 	CREATE INDEX IF NOT EXISTS idx_snapshots_recorded ON refresh_snapshots(recorded_at DESC);
+
+
 	`
 
 	_, err := db.Exec(schema)
 	if err != nil {
 		return fmt.Errorf("running migrations: %w", err)
 	}
+
+	// Migration: add adopted_at column if it doesn't exist (ignore error if already exists)
+	db.Exec("ALTER TABLE projects ADD COLUMN adopted_at TIMESTAMP")
 
 	return nil
 }
@@ -115,8 +123,8 @@ func (db *DB) Migrate() error {
 
 func (db *DB) UpsertProject(p *Project) error {
 	query := `
-	INSERT INTO projects (repo_full_name, github_url, stars, description, primary_language, dockerfile_path, file_url, source_type, first_seen_at, last_seen_at, updated_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+	INSERT INTO projects (repo_full_name, github_url, stars, description, primary_language, dockerfile_path, file_url, source_type, adopted_at, first_seen_at, last_seen_at, updated_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 	ON CONFLICT(repo_full_name) DO UPDATE SET
 		stars = excluded.stars,
 		description = excluded.description,
@@ -124,10 +132,11 @@ func (db *DB) UpsertProject(p *Project) error {
 		dockerfile_path = excluded.dockerfile_path,
 		file_url = excluded.file_url,
 		source_type = excluded.source_type,
+		adopted_at = COALESCE(projects.adopted_at, excluded.adopted_at),
 		last_seen_at = CURRENT_TIMESTAMP,
 		updated_at = CURRENT_TIMESTAMP
 	`
-	_, err := db.Exec(query, p.RepoFullName, p.GitHubURL, p.Stars, p.Description, p.PrimaryLanguage, p.DockerfilePath, p.FileURL, p.SourceType)
+	_, err := db.Exec(query, p.RepoFullName, p.GitHubURL, p.Stars, p.Description, p.PrimaryLanguage, p.DockerfilePath, p.FileURL, p.SourceType, p.AdoptedAt)
 	return err
 }
 
@@ -143,7 +152,7 @@ type ProjectFilter struct {
 }
 
 func (db *DB) ListProjects(filter ProjectFilter) ([]Project, error) {
-	query := `SELECT id, repo_full_name, github_url, stars, description, primary_language, dockerfile_path, file_url, source_type, first_seen_at, last_seen_at, created_at, updated_at FROM projects WHERE 1=1`
+	query := `SELECT id, repo_full_name, github_url, stars, description, primary_language, dockerfile_path, file_url, source_type, adopted_at, first_seen_at, last_seen_at, created_at, updated_at FROM projects WHERE 1=1`
 	args := []interface{}{}
 
 	if filter.MinStars > 0 {
@@ -198,7 +207,7 @@ func (db *DB) ListProjects(filter ProjectFilter) ([]Project, error) {
 	var projects []Project
 	for rows.Next() {
 		var p Project
-		err := rows.Scan(&p.ID, &p.RepoFullName, &p.GitHubURL, &p.Stars, &p.Description, &p.PrimaryLanguage, &p.DockerfilePath, &p.FileURL, &p.SourceType, &p.FirstSeenAt, &p.LastSeenAt, &p.CreatedAt, &p.UpdatedAt)
+		err := rows.Scan(&p.ID, &p.RepoFullName, &p.GitHubURL, &p.Stars, &p.Description, &p.PrimaryLanguage, &p.DockerfilePath, &p.FileURL, &p.SourceType, &p.AdoptedAt, &p.FirstSeenAt, &p.LastSeenAt, &p.CreatedAt, &p.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -341,10 +350,10 @@ func (db *DB) GetSnapshots(limit int) ([]RefreshSnapshot, error) {
 	return snapshots, rows.Err()
 }
 
-// GetNewProjectsSince returns projects first seen after the given time
+// GetNewProjectsSince returns projects adopted after the given time
 func (db *DB) GetNewProjectsSince(since time.Time) ([]Project, error) {
-	query := `SELECT id, repo_full_name, github_url, stars, description, primary_language, dockerfile_path, file_url, source_type, first_seen_at, last_seen_at, created_at, updated_at 
-		FROM projects WHERE first_seen_at > ? ORDER BY first_seen_at DESC`
+	query := `SELECT id, repo_full_name, github_url, stars, description, primary_language, dockerfile_path, file_url, source_type, adopted_at, first_seen_at, last_seen_at, created_at, updated_at 
+		FROM projects WHERE adopted_at IS NOT NULL AND adopted_at > ? ORDER BY adopted_at DESC`
 
 	rows, err := db.Query(query, since)
 	if err != nil {
@@ -355,7 +364,7 @@ func (db *DB) GetNewProjectsSince(since time.Time) ([]Project, error) {
 	var projects []Project
 	for rows.Next() {
 		var p Project
-		err := rows.Scan(&p.ID, &p.RepoFullName, &p.GitHubURL, &p.Stars, &p.Description, &p.PrimaryLanguage, &p.DockerfilePath, &p.FileURL, &p.SourceType, &p.FirstSeenAt, &p.LastSeenAt, &p.CreatedAt, &p.UpdatedAt)
+		err := rows.Scan(&p.ID, &p.RepoFullName, &p.GitHubURL, &p.Stars, &p.Description, &p.PrimaryLanguage, &p.DockerfilePath, &p.FileURL, &p.SourceType, &p.AdoptedAt, &p.FirstSeenAt, &p.LastSeenAt, &p.CreatedAt, &p.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -364,9 +373,38 @@ func (db *DB) GetNewProjectsSince(since time.Time) ([]Project, error) {
 	return projects, rows.Err()
 }
 
-// GetNewProjectsCount returns count of projects first seen after the given time
+// GetNewProjectsCount returns count of projects adopted after the given time
 func (db *DB) GetNewProjectsCount(since time.Time) (int, error) {
 	var count int
-	err := db.QueryRow(`SELECT COUNT(*) FROM projects WHERE first_seen_at > ?`, since).Scan(&count)
+	err := db.QueryRow(`SELECT COUNT(*) FROM projects WHERE adopted_at IS NOT NULL AND adopted_at > ?`, since).Scan(&count)
 	return count, err
+}
+
+// GetProjectsWithoutAdoptionDate returns projects that need adoption date fetched
+func (db *DB) GetProjectsWithoutAdoptionDate() ([]Project, error) {
+	query := `SELECT id, repo_full_name, github_url, stars, description, primary_language, dockerfile_path, file_url, source_type, adopted_at, first_seen_at, last_seen_at, created_at, updated_at 
+		FROM projects WHERE adopted_at IS NULL`
+
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var projects []Project
+	for rows.Next() {
+		var p Project
+		err := rows.Scan(&p.ID, &p.RepoFullName, &p.GitHubURL, &p.Stars, &p.Description, &p.PrimaryLanguage, &p.DockerfilePath, &p.FileURL, &p.SourceType, &p.AdoptedAt, &p.FirstSeenAt, &p.LastSeenAt, &p.CreatedAt, &p.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		projects = append(projects, p)
+	}
+	return projects, rows.Err()
+}
+
+// UpdateProjectAdoptionDate sets the adoption date for a project
+func (db *DB) UpdateProjectAdoptionDate(id int64, adoptedAt time.Time) error {
+	_, err := db.Exec(`UPDATE projects SET adopted_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, adoptedAt, id)
+	return err
 }

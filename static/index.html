@@ -804,7 +804,7 @@
                         <h3><a href="${p.github_url}" target="_blank">${p.repo_full_name}</a></h3>
                         <div class="stars">⭐ ${formatNumber(p.stars)}</div>
                         <div class="description">${p.description || 'No description'}</div>
-                        <div class="meta">${p.primary_language || 'Unknown'} • Added ${formatDate(p.first_seen_at)}</div>
+                        <div class="meta">${p.primary_language || 'Unknown'} • Adopted ${formatDate(p.adopted_at)}</div>
                     </div>
                 `).join('');
             } catch (err) {
@@ -918,10 +918,10 @@
                     return;
                 }
                 
-                // Group by week
+                // Group by week based on adoption date
                 const weeks = {};
                 projects.forEach(p => {
-                    const date = new Date(p.first_seen_at);
+                    const date = new Date(p.adopted_at);
                     const weekStart = getWeekStart(date);
                     const key = weekStart.toISOString().split('T')[0];
                     if (!weeks[key]) weeks[key] = [];
