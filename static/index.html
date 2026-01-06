@@ -862,20 +862,19 @@
         let historyChart = null;
         async function loadHistory() {
             try {
-                const resp = await fetch('/api/history');
+                const resp = await fetch('/api/history?days=14');
                 const data = await resp.json();
                 
-                if (!data.snapshots || data.snapshots.length === 0) {
-                    document.getElementById('historyChart').parentElement.innerHTML = '<p class="empty-state">No historical data yet. Data will accumulate after multiple refreshes.</p>';
+                if (!data.adoptions || data.adoptions.length === 0) {
+                    document.getElementById('historyChart').parentElement.innerHTML = '<p class="empty-state">No adoption data yet.</p>';
                     return;
                 }
                 
-                // Reverse to get chronological order
-                const snapshots = data.snapshots.reverse();
+                const adoptions = data.adoptions;
                 
-                const labels = snapshots.map(s => new Date(s.recorded_at).toLocaleDateString());
-                const projectCounts = snapshots.map(s => s.total_projects);
-                const starCounts = snapshots.map(s => s.total_stars);
+                const labels = adoptions.map(a => a.date);
+                const projectCounts = adoptions.map(a => a.cumulative_count);
+                const starCounts = adoptions.map(a => a.cumulative_stars);
                 
                 const ctx = document.getElementById('historyChart').getContext('2d');
                 

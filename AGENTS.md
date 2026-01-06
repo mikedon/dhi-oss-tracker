@@ -262,6 +262,7 @@ See `spec.md` for detailed requirements.
 **Fix:** Added `SetNextRefreshFunc` to API, expose `next_refresh` in status endpoint, display in header as "Next: {time}".
 
 ### Bug 3: History chart x-axis shows repeated dates
-**Status:** 🔴 Open
+**Status:** ✅ Fixed (2026-01-06)
 **Reported:** 2026-01-06
 **Description:** History tab chart shows "1/5" repeated multiple times on x-axis. Should show adoption trends over time (e.g., last 2 weeks) based on when projects adopted DHI, not when snapshots were recorded.
+**Fix:** Changed /api/history to return adoption by date (based on adopted_at) instead of refresh snapshots. Shows last 14 days of adoption with cumulative counts.

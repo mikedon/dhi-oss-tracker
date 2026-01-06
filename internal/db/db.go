@@ -329,6 +329,55 @@ func (db *DB) RecordSnapshot() error {
 	return err
 }
 
+// AdoptionByDate represents adoption count for a specific date
+type AdoptionByDate struct {
+	Date           string `json:"date"`
+	Count          int    `json:"count"`
+	CumulativeCount int   `json:"cumulative_count"`
+	CumulativeStars int   `json:"cumulative_stars"`
+}
+
+// GetAdoptionByDate returns daily adoption counts with cumulative totals
+func (db *DB) GetAdoptionByDate(days int) ([]AdoptionByDate, error) {
+	query := `
+		WITH daily_adoptions AS (
+			SELECT 
+				date(adopted_at) as date,
+				COUNT(*) as count,
+				SUM(stars) as stars
+			FROM projects 
+			WHERE adopted_at IS NOT NULL 
+				AND adopted_at >= date('now', ?)
+			GROUP BY date(adopted_at)
+			ORDER BY date(adopted_at)
+		)
+		SELECT 
+			date,
+			count,
+			(SELECT COUNT(*) FROM projects WHERE adopted_at IS NOT NULL AND date(adopted_at) <= daily_adoptions.date) as cumulative_count,
+			(SELECT COALESCE(SUM(stars), 0) FROM projects WHERE adopted_at IS NOT NULL AND date(adopted_at) <= daily_adoptions.date) as cumulative_stars
+		FROM daily_adoptions
+	`
+	
+	sinceArg := fmt.Sprintf("-%d days", days)
+	rows, err := db.Query(query, sinceArg)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []AdoptionByDate
+	for rows.Next() {
+		var r AdoptionByDate
+		err := rows.Scan(&r.Date, &r.Count, &r.CumulativeCount, &r.CumulativeStars)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, r)
+	}
+	return results, rows.Err()
+}
+
 // GetSnapshots returns historical snapshots, most recent first
 func (db *DB) GetSnapshots(limit int) ([]RefreshSnapshot, error) {
 	query := `SELECT id, recorded_at, total_projects, total_stars, popular_count, notable_count FROM refresh_snapshots ORDER BY recorded_at DESC`

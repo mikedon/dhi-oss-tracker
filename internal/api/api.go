@@ -336,34 +336,34 @@ func (a *API) GetLastRefreshTime() *time.Time {
 	return job.CompletedAt
 }
 
-// handleHistory returns historical snapshots
+// handleHistory returns adoption history by date
 func (a *API) handleHistory(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	limit := 100 // default limit
-	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
-		if v, err := strconv.Atoi(limitStr); err == nil && v > 0 {
-			limit = v
+	days := 14 // default to 2 weeks
+	if daysStr := r.URL.Query().Get("days"); daysStr != "" {
+		if v, err := strconv.Atoi(daysStr); err == nil && v > 0 {
+			days = v
 		}
 	}
 
-	snapshots, err := a.db.GetSnapshots(limit)
+	adoptions, err := a.db.GetAdoptionByDate(days)
 	if err != nil {
-		log.Printf("Error getting snapshots: %v", err)
+		log.Printf("Error getting adoption history: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"snapshots": snapshots,
+		"adoptions": adoptions,
 	})
 }
 
-// handleNewProjects returns projects first seen within a time period
+// handleNewProjects returns projects adopted within a time period
 func (a *API) handleNewProjects(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
