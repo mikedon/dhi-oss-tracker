@@ -1,4 +1,4 @@
-# AGENTS.md
+| 2026-01-06 | Simplify email notifications to use SendGrid from environment | Users shouldn't need to know SMTP details. Configure SendGrid once in .env, users only provide recipient email. Reduces configuration complexity and standardizes on SendGrid. |# AGENTS.md
 
 ## Current State
 
@@ -315,6 +315,7 @@
 | 2026-01-05 | Add filename:Dockerfile filter | Excludes documentation/README files that contain DHI examples but aren't actual usage. |
 | 2026-01-06 | Track adopted_at from git history instead of first_seen_at | Shows when projects actually adopted DHI, not when we discovered them. More accurate adoption timelines. |
 | 2026-01-06 | Store adoption_commit URL | Allows users to click through to see the exact commit that added DHI to a project. |
+| 2026-01-06 | Simplify email notifications to use SendGrid from environment | Users shouldn't need to know SMTP details. Configure SendGrid once in .env, users only provide recipient email. Reduces configuration complexity and standardizes on SendGrid. |
 
 ---
 
