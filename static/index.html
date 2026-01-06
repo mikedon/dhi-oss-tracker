@@ -419,6 +419,207 @@
                 width: 100%;
             }
         }
+
+        /* Modal Styles */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: var(--card-bg);
+            padding: 30px;
+            border-radius: 8px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            font-size: 2rem;
+            cursor: pointer;
+            color: var(--text-muted);
+        }
+
+        .modal-close:hover {
+            color: var(--text);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            font-size: 0.9rem;
+        }
+
+        .form-group small {
+            display: block;
+            margin-top: 5px;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        .form-group small a {
+            color: var(--primary);
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 25px;
+        }
+
+        /* Notification Card Styles */
+        .notification-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+        }
+
+        .notification-card.disabled {
+            opacity: 0.6;
+        }
+
+        .notification-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 10px;
+        }
+
+        .notification-title {
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .notification-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            margin-left: 10px;
+        }
+
+        .notification-badge.slack {
+            background: #611f69;
+            color: white;
+        }
+
+        .notification-badge.email {
+            background: #0066cc;
+            color: white;
+        }
+
+        .notification-meta {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            margin-bottom: 15px;
+        }
+
+        .notification-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 0.85rem;
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 24px;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .toggle-slider {
+            background-color: var(--success);
+        }
+
+        input:checked + .toggle-slider:before {
+            transform: translateX(26px);
+        }
+
     </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
@@ -443,6 +644,7 @@
         <div class="tabs">
             <button class="tab active" onclick="showTab('dashboard')">Dashboard</button>
             <button class="tab" onclick="showTab('history')">History</button>
+            <button class="tab" onclick="showTab('notifications')">Notifications</button>
         </div>
 
         <!-- Dashboard Tab -->
@@ -565,6 +767,95 @@
                 <div id="projectsByWeek" class="projects-by-week"></div>
             </section>
         </div>
+
+        <!-- Notifications Tab -->
+        <div id="notificationsTab" style="display: none;">
+            <section class="section">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2>🔔 Notification Settings</h2>
+                    <button class="btn btn-primary" onclick="showAddNotificationModal()">+ Add Notification</button>
+                </div>
+
+                <div id="notificationsContainer">
+                    <!-- Notifications will be loaded here -->
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Add/Edit Notification Modal -->
+    <div id="notificationModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="modal-close" onclick="closeNotificationModal()">&times;</span>
+            <h2 id="modalTitle">Add Notification</h2>
+            <form id="notificationForm" onsubmit="saveNotification(event)">
+                <div class="form-group">
+                    <label for="notifName">Name *</label>
+                    <input type="text" id="notifName" required placeholder="e.g., Team Slack, Mike's Email">
+                </div>
+
+                <div class="form-group">
+                    <label for="notifType">Type *</label>
+                    <select id="notifType" required onchange="updateConfigFields()">
+                        <option value="">Select type</option>
+                        <option value="slack">Slack</option>
+                        <option value="email">Email</option>
+                    </select>
+                </div>
+
+                <div id="slackFields" style="display: none;">
+                    <div class="form-group">
+                        <label for="slackWebhook">Slack Webhook URL *</label>
+                        <input type="url" id="slackWebhook" placeholder="https://hooks.slack.com/services/...">
+                        <small>Create an <a href="https://api.slack.com/messaging/webhooks" target="_blank">Incoming Webhook</a> in your Slack workspace</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="slackChannel">Channel (optional)</label>
+                        <input type="text" id="slackChannel" placeholder="#dhi-alerts">
+                    </div>
+                </div>
+
+                <div id="emailFields" style="display: none;">
+                    <div class="form-group">
+                        <label for="emailTo">To Email *</label>
+                        <input type="email" id="emailTo" placeholder="user@example.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="emailFrom">From Email *</label>
+                        <input type="email" id="emailFrom" placeholder="noreply@example.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="emailHost">SMTP Host *</label>
+                        <input type="text" id="emailHost" placeholder="smtp.gmail.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="emailPort">SMTP Port *</label>
+                        <input type="number" id="emailPort" placeholder="587">
+                    </div>
+                    <div class="form-group">
+                        <label for="emailUsername">SMTP Username</label>
+                        <input type="text" id="emailUsername" placeholder="Optional">
+                    </div>
+                    <div class="form-group">
+                        <label for="emailPassword">SMTP Password</label>
+                        <input type="password" id="emailPassword" placeholder="Optional">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="notifEnabled" checked>
+                        Enabled
+                    </label>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="btn" onclick="closeNotificationModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
     </main>
 
     <script>
@@ -848,6 +1139,7 @@
         function showTab(tabName) {
             document.getElementById('dashboardTab').style.display = tabName === 'dashboard' ? 'block' : 'none';
             document.getElementById('historyTab').style.display = tabName === 'history' ? 'block' : 'none';
+            document.getElementById('notificationsTab').style.display = tabName === 'notifications' ? 'block' : 'none';
             
             document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
             event.target.classList.add('active');
@@ -855,6 +1147,8 @@
             if (tabName === 'history') {
                 loadHistory();
                 loadProjectsByWeek();
+            } else if (tabName === 'notifications') {
+                loadNotifications();
             }
         }
 
@@ -975,6 +1269,228 @@
             const day = d.getDay();
             const diff = d.getDate() - day;
             return new Date(d.setDate(diff));
+        }
+
+        // Notification Management
+        let currentEditingNotificationId = null;
+
+        async function loadNotifications() {
+            try {
+                const resp = await fetch('/api/notifications');
+                const notifications = await resp.json();
+                const container = document.getElementById('notificationsContainer');
+                
+                if (!notifications || notifications.length === 0) {
+                    container.innerHTML = '<div class="empty-state">No notifications configured yet. Click "Add Notification" to get started.</div>';
+                    return;
+                }
+                
+                container.innerHTML = notifications.map(n => {
+                    const config = JSON.parse(n.config_json);
+                    let configDisplay = '';
+                    if (n.type === 'slack') {
+                        configDisplay = config.channel ? `Channel: ${config.channel}` : 'Webhook configured';
+                    } else if (n.type === 'email') {
+                        configDisplay = `To: ${config.to}`;
+                    }
+                    
+                    const lastTriggered = n.last_triggered_at ? new Date(n.last_triggered_at).toLocaleString() : 'Never';
+                    
+                    return `
+                        <div class="notification-card ${n.enabled ? '' : 'disabled'}">
+                            <div class="notification-header">
+                                <div>
+                                    <span class="notification-title">${n.name}</span>
+                                    <span class="notification-badge ${n.type}">${n.type.toUpperCase()}</span>
+                                </div>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" ${n.enabled ? 'checked' : ''} onchange="toggleNotification(${n.id}, this.checked)">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                            <div class="notification-meta">
+                                ${configDisplay}<br>
+                                Last triggered: ${lastTriggered}
+                            </div>
+                            <div class="notification-actions">
+                                <button class="btn btn-sm btn-success" onclick="testNotification(${n.id})">Test</button>
+                                <button class="btn btn-sm" onclick="editNotification(${n.id})">Edit</button>
+                                <button class="btn btn-sm btn-danger" onclick="deleteNotification(${n.id})">Delete</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } catch (err) {
+                console.error('Failed to load notifications:', err);
+                document.getElementById('notificationsContainer').innerHTML = '<div class="empty-state">Failed to load notifications</div>';
+            }
+        }
+
+        function showAddNotificationModal() {
+            currentEditingNotificationId = null;
+            document.getElementById('modalTitle').textContent = 'Add Notification';
+            document.getElementById('notificationForm').reset();
+            document.getElementById('notifEnabled').checked = true;
+            updateConfigFields();
+            document.getElementById('notificationModal').style.display = 'flex';
+        }
+
+        function closeNotificationModal() {
+            document.getElementById('notificationModal').style.display = 'none';
+            currentEditingNotificationId = null;
+        }
+
+        function updateConfigFields() {
+            const type = document.getElementById('notifType').value;
+            document.getElementById('slackFields').style.display = type === 'slack' ? 'block' : 'none';
+            document.getElementById('emailFields').style.display = type === 'email' ? 'block' : 'none';
+        }
+
+        async function saveNotification(event) {
+            event.preventDefault();
+            
+            const name = document.getElementById('notifName').value;
+            const type = document.getElementById('notifType').value;
+            const enabled = document.getElementById('notifEnabled').checked;
+            
+            let configJson = {};
+            if (type === 'slack') {
+                configJson = {
+                    webhook_url: document.getElementById('slackWebhook').value,
+                    channel: document.getElementById('slackChannel').value
+                };
+            } else if (type === 'email') {
+                configJson = {
+                    to: document.getElementById('emailTo').value,
+                    from: document.getElementById('emailFrom').value,
+                    smtp_host: document.getElementById('emailHost').value,
+                    smtp_port: parseInt(document.getElementById('emailPort').value),
+                    smtp_username: document.getElementById('emailUsername').value,
+                    smtp_password: document.getElementById('emailPassword').value
+                };
+            }
+            
+            const payload = {
+                name,
+                type,
+                enabled,
+                config_json: JSON.stringify(configJson)
+            };
+            
+            try {
+                const url = currentEditingNotificationId 
+                    ? `/api/notifications/${currentEditingNotificationId}`
+                    : '/api/notifications';
+                const method = currentEditingNotificationId ? 'PUT' : 'POST';
+                
+                const resp = await fetch(url, {
+                    method,
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                
+                if (!resp.ok) {
+                    const error = await resp.text();
+                    alert('Error: ' + error);
+                    return;
+                }
+                
+                closeNotificationModal();
+                loadNotifications();
+            } catch (err) {
+                console.error('Failed to save notification:', err);
+                alert('Failed to save notification');
+            }
+        }
+
+        async function editNotification(id) {
+            try {
+                const resp = await fetch(`/api/notifications/${id}`);
+                const notif = await resp.json();
+                
+                currentEditingNotificationId = id;
+                document.getElementById('modalTitle').textContent = 'Edit Notification';
+                document.getElementById('notifName').value = notif.name;
+                document.getElementById('notifType').value = notif.type;
+                document.getElementById('notifEnabled').checked = notif.enabled;
+                
+                const config = JSON.parse(notif.config_json);
+                if (notif.type === 'slack') {
+                    document.getElementById('slackWebhook').value = config.webhook_url || '';
+                    document.getElementById('slackChannel').value = config.channel || '';
+                } else if (notif.type === 'email') {
+                    document.getElementById('emailTo').value = config.to || '';
+                    document.getElementById('emailFrom').value = config.from || '';
+                    document.getElementById('emailHost').value = config.smtp_host || '';
+                    document.getElementById('emailPort').value = config.smtp_port || '';
+                    document.getElementById('emailUsername').value = config.smtp_username || '';
+                    document.getElementById('emailPassword').value = config.smtp_password || '';
+                }
+                
+                updateConfigFields();
+                document.getElementById('notificationModal').style.display = 'flex';
+            } catch (err) {
+                console.error('Failed to load notification:', err);
+                alert('Failed to load notification');
+            }
+        }
+
+        async function deleteNotification(id) {
+            if (!confirm('Are you sure you want to delete this notification?')) return;
+            
+            try {
+                const resp = await fetch(`/api/notifications/${id}`, {method: 'DELETE'});
+                if (!resp.ok) {
+                    alert('Failed to delete notification');
+                    return;
+                }
+                loadNotifications();
+            } catch (err) {
+                console.error('Failed to delete notification:', err);
+                alert('Failed to delete notification');
+            }
+        }
+
+        async function toggleNotification(id, enabled) {
+            try {
+                // Get the current config first
+                const getResp = await fetch(`/api/notifications/${id}`);
+                const notif = await getResp.json();
+                
+                // Update with new enabled state
+                notif.enabled = enabled;
+                
+                const resp = await fetch(`/api/notifications/${id}`, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(notif)
+                });
+                
+                if (!resp.ok) {
+                    alert('Failed to toggle notification');
+                    loadNotifications(); // Reload to reset toggle
+                }
+            } catch (err) {
+                console.error('Failed to toggle notification:', err);
+                alert('Failed to toggle notification');
+                loadNotifications();
+            }
+        }
+
+        async function testNotification(id) {
+            try {
+                const resp = await fetch(`/api/notifications/${id}/test`, {method: 'POST'});
+                const result = await resp.json();
+                
+                if (result.success) {
+                    alert('Test notification sent successfully!');
+                } else {
+                    alert('Failed to send test notification: ' + (result.error || 'Unknown error'));
+                }
+            } catch (err) {
+                console.error('Failed to test notification:', err);
+                alert('Failed to send test notification');
+            }
         }
 
         // Initial load

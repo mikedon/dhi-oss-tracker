@@ -13,20 +13,23 @@ import (
 
 	"dhi-oss-usage/internal/db"
 	"dhi-oss-usage/internal/github"
+	"dhi-oss-usage/internal/notifications"
 )
 
 type API struct {
-	db             *db.DB
-	ghClient       *github.Client
-	refreshMu      sync.Mutex
-	refreshRunning bool
-	nextRefreshFn  func() *time.Time // function to get next scheduled refresh time
+	db               *db.DB
+	ghClient         *github.Client
+	notificationsSvc *notifications.Service
+	refreshMu        sync.Mutex
+	refreshRunning   bool
+	nextRefreshFn    func() *time.Time // function to get next scheduled refresh time
 }
 
 func New(database *db.DB, ghClient *github.Client) *API {
 	return &API{
-		db:       database,
-		ghClient: ghClient,
+		db:               database,
+		ghClient:         ghClient,
+		notificationsSvc: notifications.NewService(database),
 	}
 }
 
@@ -44,6 +47,10 @@ func (a *API) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/refresh", a.handleRefresh)
 	mux.HandleFunc("/api/refresh/status", a.handleRefreshStatus)
 	mux.HandleFunc("/api/history", a.handleHistory)
+
+	// Notification endpoints
+	mux.HandleFunc("/api/notifications", a.handleNotifications)
+	mux.HandleFunc("/api/notifications/", a.handleNotificationsSingle) // handles /api/notifications/:id paths
 }
 
 // handleProjects returns list of projects with filtering/sorting
@@ -234,6 +241,18 @@ func (a *API) runRefresh(jobID int64, source string) {
 
 	// Fetch adoption dates for projects that don't have them
 	a.fetchAdoptionDates(ctx)
+
+	// Get new projects from this week to notify about
+	weekStart := startOfWeek(time.Now())
+	newProjects, err := a.db.GetNewProjectsSince(weekStart)
+	if err != nil {
+		log.Printf("Error getting new projects for notification: %v", err)
+	} else if len(newProjects) > 0 {
+		log.Printf("Sending notifications for %d new projects", len(newProjects))
+		if err := a.notificationsSvc.NotifyNewProjects(newProjects); err != nil {
+			log.Printf("Error sending notifications: %v", err)
+		}
+	}
 
 	// Record snapshot for historical tracking
 	if err := a.db.RecordSnapshot(); err != nil {
@@ -471,4 +490,235 @@ func (a *API) handleRefreshStatus(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+// Notification handlers
+
+// handleNotifications handles listing all configs (GET) or creating a new one (POST)
+func (a *API) handleNotifications(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		a.listNotifications(w, r)
+	case http.MethodPost:
+		a.createNotification(w, r)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleNotificationsSingle handles operations on a single notification config
+func (a *API) handleNotificationsSingle(w http.ResponseWriter, r *http.Request) {
+	// Extract ID from path
+	path := strings.TrimPrefix(r.URL.Path, "/api/notifications/")
+	parts := strings.Split(path, "/")
+	if len(parts) == 0 || parts[0] == "" {
+		http.Error(w, "Notification ID required", http.StatusBadRequest)
+		return
+	}
+
+	id, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid notification ID", http.StatusBadRequest)
+		return
+	}
+
+	// Check if this is a sub-action like /test or /logs
+	if len(parts) > 1 {
+		action := parts[1]
+		switch action {
+		case "test":
+			a.testNotification(w, r, id)
+			return
+		case "logs":
+			a.getNotificationLogs(w, r, id)
+			return
+		default:
+			http.Error(w, "Unknown action", http.StatusNotFound)
+			return
+		}
+	}
+
+	// Handle single resource operations
+	switch r.Method {
+	case http.MethodGet:
+		a.getNotification(w, r, id)
+	case http.MethodPut:
+		a.updateNotification(w, r, id)
+	case http.MethodDelete:
+		a.deleteNotification(w, r, id)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (a *API) listNotifications(w http.ResponseWriter, r *http.Request) {
+	configs, err := a.db.ListNotificationConfigs()
+	if err != nil {
+		log.Printf("Error listing notification configs: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(configs)
+}
+
+func (a *API) createNotification(w http.ResponseWriter, r *http.Request) {
+	var config db.NotificationConfig
+	if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Validate required fields
+	if config.Name == "" || config.Type == "" || config.ConfigJSON == "" {
+		http.Error(w, "name, type, and config_json are required", http.StatusBadRequest)
+		return
+	}
+
+	// Validate type
+	if config.Type != "slack" && config.Type != "email" {
+		http.Error(w, "type must be 'slack' or 'email'", http.StatusBadRequest)
+		return
+	}
+
+	// Validate config by trying to create a provider
+	if config.Type == "slack" {
+		var slackConfig notifications.SlackConfig
+		if err := json.Unmarshal([]byte(config.ConfigJSON), &slackConfig); err != nil {
+			http.Error(w, fmt.Sprintf("Invalid slack config: %v", err), http.StatusBadRequest)
+			return
+		}
+		if slackConfig.WebhookURL == "" {
+			http.Error(w, "webhook_url is required for Slack notifications", http.StatusBadRequest)
+			return
+		}
+	} else if config.Type == "email" {
+		var emailConfig notifications.EmailConfig
+		if err := json.Unmarshal([]byte(config.ConfigJSON), &emailConfig); err != nil {
+			http.Error(w, fmt.Sprintf("Invalid email config: %v", err), http.StatusBadRequest)
+			return
+		}
+		if emailConfig.To == "" || emailConfig.SMTPHost == "" || emailConfig.SMTPPort == 0 || emailConfig.From == "" {
+			http.Error(w, "to, smtp_host, smtp_port, and from are required for email notifications", http.StatusBadRequest)
+			return
+		}
+	}
+
+	id, err := a.db.CreateNotificationConfig(&config)
+	if err != nil {
+		log.Printf("Error creating notification config: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	config.ID = id
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(config)
+}
+
+func (a *API) getNotification(w http.ResponseWriter, r *http.Request, id int64) {
+	config, err := a.db.GetNotificationConfig(id)
+	if err != nil {
+		log.Printf("Error getting notification config: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	if config == nil {
+		http.Error(w, "Notification config not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(config)
+}
+
+func (a *API) updateNotification(w http.ResponseWriter, r *http.Request, id int64) {
+	var config db.NotificationConfig
+	if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	config.ID = id
+
+	// Validate required fields
+	if config.Name == "" || config.Type == "" || config.ConfigJSON == "" {
+		http.Error(w, "name, type, and config_json are required", http.StatusBadRequest)
+		return
+	}
+
+	// Validate type
+	if config.Type != "slack" && config.Type != "email" {
+		http.Error(w, "type must be 'slack' or 'email'", http.StatusBadRequest)
+		return
+	}
+
+	if err := a.db.UpdateNotificationConfig(&config); err != nil {
+		log.Printf("Error updating notification config: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(config)
+}
+
+func (a *API) deleteNotification(w http.ResponseWriter, r *http.Request, id int64) {
+	if err := a.db.DeleteNotificationConfig(id); err != nil {
+		log.Printf("Error deleting notification config: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *API) testNotification(w http.ResponseWriter, r *http.Request, id int64) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := a.notificationsSvc.SendTestNotification(id); err != nil {
+		log.Printf("Error sending test notification: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Test notification sent",
+	})
+}
+
+func (a *API) getNotificationLogs(w http.ResponseWriter, r *http.Request, id int64) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	limit := 50 // default
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if v, err := strconv.Atoi(limitStr); err == nil && v > 0 {
+			limit = v
+		}
+	}
+
+	logs, err := a.db.GetNotificationLogs(id, limit)
+	if err != nil {
+		log.Printf("Error getting notification logs: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(logs)
 }

@@ -49,6 +49,26 @@ type RefreshSnapshot struct {
 	NotableCount  int       `json:"notable_count"`
 }
 
+type NotificationConfig struct {
+	ID              int64      `json:"id"`
+	Name            string     `json:"name"`
+	Type            string     `json:"type"` // slack, email
+	Enabled         bool       `json:"enabled"`
+	ConfigJSON      string     `json:"config_json"`
+	LastTriggeredAt *time.Time `json:"last_triggered_at"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+}
+
+type NotificationLog struct {
+	ID           int64     `json:"id"`
+	ConfigID     int64     `json:"config_id"`
+	ProjectID    *int64    `json:"project_id"`
+	Status       string    `json:"status"` // sent, failed
+	ErrorMessage string    `json:"error_message"`
+	SentAt       time.Time `json:"sent_at"`
+}
+
 func Open(path string) (*DB, error) {
 	db, err := sql.Open("sqlite3", path+"?_journal_mode=WAL&_foreign_keys=on")
 	if err != nil {
@@ -106,6 +126,31 @@ func (db *DB) Migrate() error {
 	CREATE INDEX IF NOT EXISTS idx_projects_first_seen ON projects(first_seen_at DESC);
 	CREATE INDEX IF NOT EXISTS idx_projects_adopted ON projects(adopted_at DESC);
 	CREATE INDEX IF NOT EXISTS idx_snapshots_recorded ON refresh_snapshots(recorded_at DESC);
+
+	CREATE TABLE IF NOT EXISTS notification_configs (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL,
+		type TEXT NOT NULL,
+		enabled BOOLEAN DEFAULT 1,
+		config_json TEXT NOT NULL,
+		last_triggered_at TIMESTAMP,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS notification_logs (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		config_id INTEGER NOT NULL,
+		project_id INTEGER,
+		status TEXT NOT NULL,
+		error_message TEXT DEFAULT '',
+		sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (config_id) REFERENCES notification_configs(id) ON DELETE CASCADE,
+		FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_notification_logs_config ON notification_logs(config_id);
+	CREATE INDEX IF NOT EXISTS idx_notification_logs_sent ON notification_logs(sent_at DESC);
 
 
 	`
@@ -460,4 +505,126 @@ func (db *DB) GetProjectsWithoutAdoptionDate() ([]Project, error) {
 func (db *DB) UpdateProjectAdoption(id int64, adoptedAt time.Time, commitURL string) error {
 	_, err := db.Exec(`UPDATE projects SET adopted_at = ?, adoption_commit = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, adoptedAt, commitURL, id)
 	return err
+}
+
+// Notification configuration operations
+
+func (db *DB) CreateNotificationConfig(config *NotificationConfig) (int64, error) {
+	result, err := db.Exec(
+		`INSERT INTO notification_configs (name, type, enabled, config_json, created_at, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+		config.Name, config.Type, config.Enabled, config.ConfigJSON,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+func (db *DB) UpdateNotificationConfig(config *NotificationConfig) error {
+	_, err := db.Exec(
+		`UPDATE notification_configs SET name = ?, type = ?, enabled = ?, config_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+		config.Name, config.Type, config.Enabled, config.ConfigJSON, config.ID,
+	)
+	return err
+}
+
+func (db *DB) DeleteNotificationConfig(id int64) error {
+	_, err := db.Exec(`DELETE FROM notification_configs WHERE id = ?`, id)
+	return err
+}
+
+func (db *DB) GetNotificationConfig(id int64) (*NotificationConfig, error) {
+	var config NotificationConfig
+	err := db.QueryRow(
+		`SELECT id, name, type, enabled, config_json, last_triggered_at, created_at, updated_at FROM notification_configs WHERE id = ?`,
+		id,
+	).Scan(&config.ID, &config.Name, &config.Type, &config.Enabled, &config.ConfigJSON, &config.LastTriggeredAt, &config.CreatedAt, &config.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &config, nil
+}
+
+func (db *DB) ListNotificationConfigs() ([]NotificationConfig, error) {
+	rows, err := db.Query(
+		`SELECT id, name, type, enabled, config_json, last_triggered_at, created_at, updated_at FROM notification_configs ORDER BY created_at DESC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var configs []NotificationConfig
+	for rows.Next() {
+		var c NotificationConfig
+		err := rows.Scan(&c.ID, &c.Name, &c.Type, &c.Enabled, &c.ConfigJSON, &c.LastTriggeredAt, &c.CreatedAt, &c.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		configs = append(configs, c)
+	}
+	return configs, rows.Err()
+}
+
+func (db *DB) GetEnabledNotificationConfigs() ([]NotificationConfig, error) {
+	rows, err := db.Query(
+		`SELECT id, name, type, enabled, config_json, last_triggered_at, created_at, updated_at FROM notification_configs WHERE enabled = 1 ORDER BY created_at DESC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var configs []NotificationConfig
+	for rows.Next() {
+		var c NotificationConfig
+		err := rows.Scan(&c.ID, &c.Name, &c.Type, &c.Enabled, &c.ConfigJSON, &c.LastTriggeredAt, &c.CreatedAt, &c.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		configs = append(configs, c)
+	}
+	return configs, rows.Err()
+}
+
+func (db *DB) UpdateNotificationTriggered(configID int64) error {
+	_, err := db.Exec(`UPDATE notification_configs SET last_triggered_at = CURRENT_TIMESTAMP WHERE id = ?`, configID)
+	return err
+}
+
+// Notification log operations
+
+func (db *DB) CreateNotificationLog(log *NotificationLog) error {
+	_, err := db.Exec(
+		`INSERT INTO notification_logs (config_id, project_id, status, error_message, sent_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+		log.ConfigID, log.ProjectID, log.Status, log.ErrorMessage,
+	)
+	return err
+}
+
+func (db *DB) GetNotificationLogs(configID int64, limit int) ([]NotificationLog, error) {
+	query := `SELECT id, config_id, project_id, status, error_message, sent_at FROM notification_logs WHERE config_id = ? ORDER BY sent_at DESC`
+	if limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", limit)
+	}
+
+	rows, err := db.Query(query, configID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var logs []NotificationLog
+	for rows.Next() {
+		var l NotificationLog
+		err := rows.Scan(&l.ID, &l.ConfigID, &l.ProjectID, &l.Status, &l.ErrorMessage, &l.SentAt)
+		if err != nil {
+			return nil, err
+		}
+		logs = append(logs, l)
+	}
+	return logs, rows.Err()
 }
