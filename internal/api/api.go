@@ -120,9 +120,9 @@ func (a *API) handleStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get count of new projects this week
-	weekAgo := time.Now().Add(-7 * 24 * time.Hour)
-	newThisWeek, err := a.db.GetNewProjectsCount(weekAgo)
+	// Get count of new projects this week (current calendar week, Monday-Sunday)
+	weekStart := startOfWeek(time.Now())
+	newThisWeek, err := a.db.GetNewProjectsCount(weekStart)
 	if err != nil {
 		log.Printf("Error getting new projects count: %v", err)
 		newThisWeek = 0 // Don't fail the whole request
@@ -364,19 +364,23 @@ func (a *API) handleNewProjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse 'since' parameter (e.g., "7d", "30d", "1w")
+	// Parse 'since' parameter (e.g., "7d", "30d", "1w", "thisweek")
 	sinceStr := r.URL.Query().Get("since")
 	if sinceStr == "" {
-		sinceStr = "7d" // default to 7 days
+		sinceStr = "thisweek" // default to current calendar week
 	}
 
-	duration, err := parseDuration(sinceStr)
-	if err != nil {
-		http.Error(w, "Invalid 'since' parameter. Use format like '7d', '1w', '30d'", http.StatusBadRequest)
-		return
+	var since time.Time
+	if sinceStr == "thisweek" {
+		since = startOfWeek(time.Now())
+	} else {
+		duration, err := parseDuration(sinceStr)
+		if err != nil {
+			http.Error(w, "Invalid 'since' parameter. Use 'thisweek', '7d', '1w', '30d'", http.StatusBadRequest)
+			return
+		}
+		since = time.Now().Add(-duration)
 	}
-
-	since := time.Now().Add(-duration)
 	projects, err := a.db.GetNewProjectsSince(since)
 	if err != nil {
 		log.Printf("Error getting new projects: %v", err)
@@ -389,6 +393,19 @@ func (a *API) handleNewProjects(w http.ResponseWriter, r *http.Request) {
 }
 
 // parseDuration parses a duration string like "7d", "1w", "30d"
+// startOfWeek returns the start of the current week (Monday 00:00:00 UTC)
+func startOfWeek(t time.Time) time.Time {
+	t = t.UTC()
+	weekday := int(t.Weekday())
+	if weekday == 0 {
+		weekday = 7 // Sunday is 7, not 0
+	}
+	// Go back to Monday
+	monday := t.AddDate(0, 0, -(weekday - 1))
+	// Return start of that day
+	return time.Date(monday.Year(), monday.Month(), monday.Day(), 0, 0, 0, 0, time.UTC)
+}
+
 func parseDuration(s string) (time.Duration, error) {
 	if len(s) < 2 {
 		return 0, fmt.Errorf("invalid duration: %s", s)

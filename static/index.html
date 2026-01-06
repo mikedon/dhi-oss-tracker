@@ -805,7 +805,8 @@
         // Load new projects this week
         async function loadNewThisWeek() {
             try {
-                const resp = await fetch('/api/projects/new?since=7d');
+                // Use thisweek for current calendar week (Monday-Sunday)
+                const resp = await fetch('/api/projects/new?since=thisweek');
                 const projects = await resp.json();
                 
                 if (!projects || projects.length === 0) {

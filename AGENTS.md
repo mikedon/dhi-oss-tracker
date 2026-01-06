@@ -250,9 +250,10 @@ See `spec.md` for detailed requirements.
 ## Bugs
 
 ### Bug 1: "New This Week" count is incorrect
-**Status:** 🔴 Open
+**Status:** ✅ Fixed (2026-01-06)
 **Reported:** 2026-01-06
 **Description:** Stats show "+33 New This Week" but only 12 projects were actually adopted in the last 7 days. The count appears inflated.
+**Fix:** Changed from "last 7 days" to actual calendar week (Monday-Sunday). Added `startOfWeek()` helper and "thisweek" option to API.
 
 ### Bug 2: Add "Next update scheduled" to header
 **Status:** 🔴 Open
