@@ -1,3 +1,9 @@
 .env
 dhi-oss-usage.db
+dhi-oss-usage.db-shm
+dhi-oss-usage.db-wal
 /server
+/dhi-oss-tracker
+server.log
+server.pid
+start_server.sh
